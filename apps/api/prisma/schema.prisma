@@ -1,0 +1,422 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING           // Chờ tài xế xác nhận
+  CONFIRMED         // Tài xế đã nhận đơn
+  PICKING_UP        // Tài xế đang đến lấy hàng (door pickup)
+  AT_STATION        // Hàng đã ở bến xe
+  IN_TRANSIT        // Xe đã xuất bến, đang trên đường
+  ARRIVED           // Xe đã đến bến đích
+  OUT_FOR_DELIVERY  // Đang giao đến địa chỉ người nhận (door delivery)
+  DELIVERED         // Giao thành công ✓
+  CANCELLED         // Đã hủy
+  DISPUTED          // Đang khiếu nại
+}
+
+enum TripStatus {
+  SCHEDULED   // Chưa xuất bến
+  BOARDING    // Đang nhận hàng tại bến
+  IN_TRANSIT  // Đang chạy
+  ARRIVED     // Đã đến bến đích
+  COMPLETED   // Hoàn thành
+  CANCELLED
+}
+
+enum ServiceType {
+  STATION_TO_STATION // Khách mang ra bến, người nhận tự đến lấy
+  DOOR_TO_STATION    // Tài xế đến lấy tận nơi, người nhận đến bến
+  STATION_TO_DOOR    // Khách mang ra bến, giao tận nhà người nhận
+  DOOR_TO_DOOR       // Lấy tận nơi + giao tận nhà
+}
+
+enum GoodsType {
+  FASHION      // Thời trang
+  BULKY        // Cồng kềnh
+  FOOD         // Thực phẩm
+  FRAGILE      // Dễ vỡ
+  FROZEN       // Đông lạnh
+  ELECTRONICS  // Điện tử
+  OTHER
+}
+
+enum WeightRange {
+  UNDER_5KG        // < 5kg
+  FROM_5_TO_20KG   // 5–20kg
+  FROM_20_TO_50KG  // 20–50kg
+  OVER_50KG        // > 50kg
+}
+
+enum PaymentMethod {
+  CASH_AT_STATION  // Tiền mặt tại bến
+  MOMO
+  BANK_TRANSFER    // ATM / Ngân hàng
+  VIET_QR          // VietQR
+}
+
+enum PaymentStatus {
+  PENDING
+  AWAITING_CONFIRMATION  // Chờ xác nhận chuyển khoản (BANK_TRANSFER / VIET_QR)
+  PROCESSING             // Đang xử lý (MOMO)
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum ComplaintStatus {
+  PENDING
+  REVIEWING
+  RESOLVED_REFUND
+  RESOLVED_REJECTED
+}
+
+enum DiscountType {
+  PERCENT  // Giảm theo %
+  FIXED    // Giảm số tiền cố định
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  phone        String   @unique
+  email        String?  @unique
+  password     String
+  fullName     String
+  avatarUrl    String?
+  role         Role     @default(CUSTOMER)
+  isActive     Boolean  @default(true)
+  isVerified   Boolean  @default(false)
+  refreshToken String?
+  fcmToken     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer Customer?
+  driver   Driver?
+
+  @@map("users")
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  savedAddresses Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders     Order[]
+  reviews    Review[]
+  complaints Complaint[]
+
+  @@map("customers")
+}
+
+model Driver {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  driverCode   String   @unique  // TX-088
+  companyName  String            // Nhà xe (Văn Minh, Phương Trang...)
+  vehiclePlate String   @unique  // 29A-001.23
+  vehicleType  String            // Xe giường nằm, xe ghế ngồi...
+  rating       Float    @default(5.0)
+  totalTrips   Int      @default(0)
+  isApproved   Boolean  @default(false)
+
+  // Tuyến hôm nay — tài xế tự cập nhật mỗi ngày
+  todayFromCity      String?
+  todayToCity        String?
+  todayDepartureTime String?   // "06:00", "14:30"...
+  todayPricePerKg    Float?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trips          Trip[]
+  reviews        Review[]
+  routes         DriverRoute[]
+  assignedOrders Order[]       @relation("AssignedDriver")
+
+  @@map("drivers")
+}
+
+model DriverRoute {
+  id             String   @id @default(cuid())
+  driverId       String
+  fromCity       String
+  toCity         String
+  departureTimes String[] @default([])
+  pricePerKg     Float?
+  durationHours  Int?
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([driverId, fromCity, toCity])
+  @@map("driver_routes")
+}
+
+model Route {
+  id           String   @id @default(cuid())
+  fromCity     String   // Hà Nội
+  fromStation  String   // Bến xe Mỹ Đình
+  toCity       String   // TP.HCM
+  toStation    String   // Bến xe Miền Đông
+  distanceKm   Float
+  durationHours Int
+  pricePerKg   Float
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  trips Trip[]
+
+  @@unique([fromStation, toStation])
+  @@map("routes")
+}
+
+model Trip {
+  id              String     @id @default(cuid())
+  routeId         String
+  driverId        String
+  departureTime   DateTime
+  arrivalEta      DateTime
+  capacityKg      Float
+  loadedKg        Float      @default(0)
+  pricePerKg      Float
+  status          TripStatus @default(SCHEDULED)
+  currentLocation String?
+  progressPercent Int        @default(0)
+  checkpoints     Json?      // [{ city, eta, actualTime, status }]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  route   Route   @relation(fields: [routeId], references: [id])
+  driver  Driver  @relation(fields: [driverId], references: [id])
+  orders  Order[]
+
+  @@map("trips")
+}
+
+model Order {
+  id           String      @id @default(cuid())
+  trackingCode String      @unique  // BS-YYMMDD-XXX
+  customerId   String
+  tripId       String?
+  assignedCompanyName String?  // Nhà xe được chọn; nếu null thì tất cả đều thấy
+  assignedDriverId    String?  // Tài xế cụ thể được chọn
+
+  status       OrderStatus @default(PENDING)
+
+  // Route (denormalized)
+  fromCity     String
+  fromStation  String
+  toCity       String
+  toStation    String
+
+  // Service
+  serviceType  ServiceType @default(STATION_TO_STATION)
+
+  // Package
+  goodsType        GoodsType
+  goodsDescription String?
+  goodsValue       Float?
+  weightRange      WeightRange
+  actualWeightKg   Float?
+
+  // Sender
+  senderName    String
+  senderPhone   String
+  senderAddress String?
+
+  // Receiver
+  receiverName    String
+  receiverPhone   String
+  receiverAddress String?
+
+  // Pricing
+  shippingFee     Float
+  doorPickupFee   Float   @default(0)
+  doorDeliveryFee Float   @default(0)
+  insuranceFee    Float   @default(0)
+  discount        Float   @default(0)
+  total           Float
+  codAmount       Float   @default(0)  // Thu hộ khi giao
+
+  // Payment
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
+
+  // Voucher
+  voucherId    String?
+  voucherDiscount Float @default(0)
+
+  // Evidence photos
+  pickupPhotos   String[]
+  deliveryPhotos String[]
+
+  // Delivery signature
+  receiverSignature String?
+
+  note String?
+
+  // Timestamps
+  confirmedAt    DateTime?
+  pickedUpAt     DateTime?
+  atStationAt    DateTime?
+  departedAt     DateTime?
+  arrivedAt      DateTime?
+  deliveredAt    DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer         Customer             @relation(fields: [customerId], references: [id])
+  trip             Trip?                @relation(fields: [tripId], references: [id])
+  assignedDriver   Driver?              @relation("AssignedDriver", fields: [assignedDriverId], references: [id])
+  voucher          Voucher?             @relation(fields: [voucherId], references: [id])
+  tracking   OrderTrackingEvent[]
+  complaint  Complaint?
+  review     Review?
+  payment    Payment?
+
+  @@map("orders")
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  orderId       String        @unique
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  amount        Float
+
+  // Mã tham chiếu duy nhất — khách dùng khi chuyển khoản
+  referenceCode String        @unique
+
+  // BANK_TRANSFER & VIET_QR
+  bankName      String?       // Vietcombank
+  bankCode      String?       // VCB (mã ngân hàng VietQR)
+  accountNumber String?
+  accountName   String?
+  qrUrl         String?       // URL ảnh QR từ img.vietqr.io
+
+  // MOMO
+  momoPayUrl    String?       // Deep link hoặc URL thanh toán MoMo
+  momoOrderId   String?
+  momoRequestId String?
+
+  // Webhook / callback data (raw JSON từ cổng thanh toán)
+  providerData  Json?
+
+  expiredAt     DateTime?     // Hết hạn QR / link sau 15 phút
+  confirmedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model OrderTrackingEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  location  String?
+  note      String?
+  photoUrl  String?
+  timestamp DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_tracking_events")
+}
+
+model Complaint {
+  id              String          @id @default(cuid())
+  orderId         String          @unique
+  customerId      String
+  reason          String
+  description     String
+  requestedAmount Float?
+  customerPhotos  String[]
+  status          ComplaintStatus @default(PENDING)
+  resolution      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  order    Order    @relation(fields: [orderId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("complaints")
+}
+
+model Review {
+  id              String   @id @default(cuid())
+  orderId         String   @unique
+  customerId      String
+  driverId        String
+  overallRating   Int
+  goodsCareRating Int
+  staffRating     Int
+  timeRating      Int
+  comment         String?
+  createdAt       DateTime @default(now())
+
+  order    Order    @relation(fields: [orderId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+  driver   Driver   @relation(fields: [driverId], references: [id])
+
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String   // order_update | payment | promotion | complaint
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model Voucher {
+  id            String       @id @default(cuid())
+  code          String       @unique  // GIAM50K, NEWUSER20...
+  description   String?
+  discountType  DiscountType
+  discountValue Float        // 10 = 10% hoặc 50000đ cố định
+  minOrderValue Float        @default(0)
+  maxDiscount   Float?       // Giảm tối đa khi dùng loại %
+  maxUses       Int          @default(100)
+  usedCount     Int          @default(0)
+  isActive      Boolean      @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  orders Order[]
+
+  @@map("vouchers")
+}

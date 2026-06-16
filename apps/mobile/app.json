@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Delilog",
+    "slug": "delilog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "delilog",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1A3566"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.delilog.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1A3566"
+      },
+      "package": "com.delilog.mobile",
+      "permissions": []
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần truy cập thư viện ảnh để chụp hàng hóa."
+        }
+      ]
+    ],
+    "web": {
+      "bundler": "webpack",
+      "output": "single"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
