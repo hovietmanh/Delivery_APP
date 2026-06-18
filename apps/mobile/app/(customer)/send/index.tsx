@@ -4,12 +4,13 @@ import {
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOrderStore } from '@store/order.store';
 import { StepIndicator } from '@components/ui/StepIndicator';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const STEPS = [
   { label: 'Tuyến' }, { label: 'Xe' }, { label: 'Hàng hóa' }, { label: 'Xem lại' },
@@ -39,12 +40,12 @@ const STATIONS: Record<string, string[]> = {
 const CITIES = Object.keys(STATIONS);
 
 const GOODS_TYPES = [
-  { key: 'FASHION', icon: '👕', label: 'Thời trang' },
-  { key: 'BULKY', icon: '🛋️', label: 'Cồng kềnh' },
-  { key: 'FOOD', icon: '🥦', label: 'Thực phẩm' },
-  { key: 'FRAGILE', icon: '🏺', label: 'Dễ vỡ' },
-  { key: 'FROZEN', icon: '🧊', label: 'Đông lạnh' },
-  { key: 'OTHER', icon: '➕', label: 'Khác' },
+  { key: 'FASHION', icon: 'shirt-outline', label: 'Thời trang', color: '#8B5CF6' },
+  { key: 'BULKY', icon: 'cube-outline', label: 'Cồng kềnh', color: '#F97316' },
+  { key: 'FOOD', icon: 'nutrition-outline', label: 'Thực phẩm', color: '#10B981' },
+  { key: 'FRAGILE', icon: 'warning-outline', label: 'Dễ vỡ', color: '#EF4444' },
+  { key: 'FROZEN', icon: 'snow-outline', label: 'Đông lạnh', color: '#0EA5E9' },
+  { key: 'OTHER', icon: 'add-circle-outline', label: 'Khác', color: Colors.secondary },
 ];
 
 const WEIGHT_RANGES = [
@@ -157,7 +158,7 @@ export default function SendStep1() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
         {/* ── Tuyến giao hàng ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>📍 Tuyến giao hàng</Text>
+          <Text style={styles.cardTitle}>Tuyến giao hàng</Text>
 
           <Text style={styles.fieldLabel}>Điểm lấy hàng (Bến gửi)</Text>
           <TouchableOpacity
@@ -175,11 +176,11 @@ export default function SendStep1() {
                 <Text style={styles.pickerPlaceholder}>Chọn tỉnh / bến xe gửi...</Text>
               )}
             </View>
-            <Text style={styles.pickerChevron}>›</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.secondary} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.swapBtn} onPress={swap}>
-            <Text style={styles.swapIcon}>⇅</Text>
+            <Ionicons name="swap-vertical" size={22} color={Colors.blue} />
           </TouchableOpacity>
 
           <Text style={styles.fieldLabel}>Điểm nhận hàng (Bến đến)</Text>
@@ -198,13 +199,13 @@ export default function SendStep1() {
                 <Text style={styles.pickerPlaceholder}>Chọn tỉnh / bến xe nhận...</Text>
               )}
             </View>
-            <Text style={styles.pickerChevron}>›</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.secondary} />
           </TouchableOpacity>
         </View>
 
         {/* ── Dịch vụ giao ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>🚚 Dịch vụ giao hàng</Text>
+          <Text style={styles.cardTitle}>Dịch vụ giao hàng</Text>
           <View style={styles.serviceGrid}>
             {SERVICE_TYPES.map(({ key, label, desc }) => (
               <TouchableOpacity
@@ -221,18 +222,23 @@ export default function SendStep1() {
 
         {/* ── Loại hàng hóa ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>📦 Loại hàng hóa</Text>
+          <Text style={styles.cardTitle}>Loại hàng hóa</Text>
           <View style={styles.goodsGrid}>
-            {GOODS_TYPES.map(({ key, icon, label }) => (
-              <TouchableOpacity
-                key={key}
-                style={[styles.goodsItem, draft.goodsType === key && styles.goodsActive]}
-                onPress={() => updateDraft({ goodsType: key as any })}
-              >
-                <Text style={styles.goodsIcon}>{icon}</Text>
-                <Text style={[styles.goodsLabel, draft.goodsType === key && styles.goodsActiveLabel]}>{label}</Text>
-              </TouchableOpacity>
-            ))}
+            {GOODS_TYPES.map(({ key, icon, label, color }) => {
+              const active = draft.goodsType === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.goodsItem, active && styles.goodsActive]}
+                  onPress={() => updateDraft({ goodsType: key as any })}
+                >
+                  <View style={[styles.goodsIconWrap, { backgroundColor: active ? color + '20' : Colors.bg }]}>
+                    <Ionicons name={icon as any} size={24} color={active ? color : Colors.secondary} />
+                  </View>
+                  <Text style={[styles.goodsLabel, active && styles.goodsActiveLabel]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           {draft.goodsType === 'OTHER' && (
             <TextInput
@@ -248,7 +254,7 @@ export default function SendStep1() {
 
         {/* ── Trọng lượng ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>⚖️ Trọng lượng hàng hóa</Text>
+          <Text style={styles.cardTitle}>Trọng lượng hàng hóa</Text>
 
           {/* Nhập kg chính xác */}
           <View style={styles.weightInputRow}>
@@ -377,7 +383,7 @@ export default function SendStep1() {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: Colors.white, margin: 12, marginTop: 0, marginBottom: 10, borderRadius: Layout.radiusLg, padding: Layout.cardPadding },
+  card: { backgroundColor: Colors.white, margin: 12, marginTop: 0, marginBottom: 10, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, ...Shadow.md },
   cardTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 14 },
   fieldLabel: { ...Typography.small, color: Colors.secondary, marginBottom: 8 },
 
@@ -391,10 +397,7 @@ const styles = StyleSheet.create({
   pickerCityLabel: { ...Typography.smallBold, color: Colors.secondary },
   pickerStationLabel: { ...Typography.bodyBold, color: Colors.dark, marginTop: 1 },
   pickerPlaceholder: { ...Typography.body, color: Colors.placeholder },
-  pickerChevron: { fontSize: 20, color: Colors.secondary, marginLeft: 8 },
-
-  swapBtn: { alignSelf: 'center', marginVertical: 8, padding: 4 },
-  swapIcon: { fontSize: 22, color: Colors.secondary },
+  swapBtn: { alignSelf: 'center', marginVertical: 8, padding: 10, backgroundColor: Colors.infoBg, borderRadius: 14 },
 
   serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   serviceItem: { width: '47%', borderWidth: 1.5, borderColor: Colors.border, borderRadius: Layout.radiusSm, padding: 10 },
@@ -411,7 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: Layout.radiusSm, backgroundColor: Colors.bg,
   },
   goodsActive: { borderColor: Colors.blue, backgroundColor: Colors.infoBg },
-  goodsIcon: { fontSize: 28, marginBottom: 4 },
+  goodsIconWrap: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   goodsLabel: { ...Typography.caption, color: Colors.secondary, textAlign: 'center' },
   goodsActiveLabel: { color: Colors.blue, fontWeight: '600' },
 
@@ -455,7 +458,7 @@ const styles = StyleSheet.create({
   },
   weightResultText: { ...Typography.small, color: Colors.success },
 
-  footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border },
+  footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
 
   // Modal styles
   modalContainer: { flex: 1, backgroundColor: Colors.bg },
@@ -464,7 +467,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white, padding: Layout.padding, paddingTop: 20,
     borderBottomWidth: 2,
   },
-  modalBack: { fontSize: 22, color: Colors.dark, paddingRight: 4 },
+  modalBack: { fontSize: 22, color: Colors.dark, paddingRight: 4, paddingLeft: 4 },
   modalTitle: { ...Typography.h4, color: Colors.dark },
   modalSubtitle: { ...Typography.small, color: Colors.secondary, marginTop: 2 },
   modalClose: { fontSize: 18, color: Colors.secondary, paddingLeft: 12 },

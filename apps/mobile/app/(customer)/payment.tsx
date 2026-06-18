@@ -4,12 +4,14 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@services/api';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const METHOD_LABEL: Record<string, string> = {
   CASH_AT_STATION: 'Tiền mặt tại bến',
@@ -68,11 +70,14 @@ export default function PaymentScreen() {
       <ScrollView contentContainerStyle={{ padding: Layout.padding, paddingTop: 28, paddingBottom: insets.bottom + 100 }}>
 
         {/* ── Header ── */}
-        <View style={styles.header}>
+        <LinearGradient colors={['#0F172A', '#1E3A8A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
+          <View style={styles.headerIconWrap}>
+            <Ionicons name="cash-outline" size={28} color={Colors.blueLight} />
+          </View>
           <Text style={styles.methodLabel}>{METHOD_LABEL[method] ?? method}</Text>
           <Text style={styles.amount}>{payment.amount?.toLocaleString('vi-VN')}đ</Text>
           <Text style={styles.refCode}>Mã tham chiếu: {payment.referenceCode}</Text>
-        </View>
+        </LinearGradient>
 
         {/* ── CASH AT STATION ── */}
         {method === 'CASH_AT_STATION' && (
@@ -232,17 +237,17 @@ export default function PaymentScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: Colors.navy, borderRadius: Layout.radiusLg,
-    paddingVertical: 32, paddingHorizontal: 20, alignItems: 'center', marginBottom: 16,
+    borderRadius: Layout.radiusLg,
+    paddingVertical: 32, paddingHorizontal: 20, alignItems: 'center', marginBottom: 16, ...Shadow.blue,
   },
+  headerIconWrap: { width: 56, height: 56, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   methodLabel: { ...Typography.small, color: 'rgba(255,255,255,0.7)', marginBottom: 10 },
   amount: { ...Typography.h1, color: Colors.white, marginBottom: 10 },
   refCode: { ...Typography.caption, color: 'rgba(255,255,255,0.6)' },
 
   card: {
     backgroundColor: Colors.white, borderRadius: Layout.radiusLg,
-    padding: Layout.cardPadding, marginBottom: 12,
-    borderWidth: 1, borderColor: Colors.border,
+    padding: Layout.cardPadding, marginBottom: 12, ...Shadow.md,
   },
   cardTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 14 },
 
@@ -304,6 +309,6 @@ const styles = StyleSheet.create({
 
   footer: {
     padding: Layout.padding, backgroundColor: Colors.white,
-    borderTopWidth: 1, borderTopColor: Colors.border,
+    borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md,
   },
 });

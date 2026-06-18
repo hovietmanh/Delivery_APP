@@ -1,11 +1,17 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@constants/Colors';
-import { Typography } from '@constants/Layout';
 import { useOrderStore } from '@store/order.store';
 
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
-  return <Text style={{ fontSize: focused ? 26 : 22, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>;
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+function TabIcon({ name, focused, color }: { name: IoniconsName; focused: boolean; color: string }) {
+  return (
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+      <Ionicons name={focused ? name : `${name}-outline` as IoniconsName} size={22} color={color} />
+    </View>
+  );
 }
 
 export default function CustomerLayout() {
@@ -17,26 +23,23 @@ export default function CustomerLayout() {
         headerShown: false,
         tabBarActiveTintColor: Colors.blue,
         tabBarInactiveTintColor: Colors.tabInactive,
-        tabBarStyle: {
-          height: 64, paddingBottom: 8, paddingTop: 4,
-          borderTopWidth: 1, borderTopColor: Colors.border,
-          backgroundColor: Colors.white,
-        },
-        tabBarLabelStyle: { ...Typography.caption, marginTop: 2 },
+        tabBarStyle: styles.tabBar,
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Trang chủ',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="home" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="send"
         options={{
           title: 'Gửi hàng',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="cube" focused={focused} color={color} />,
         }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
@@ -50,14 +53,14 @@ export default function CustomerLayout() {
         name="orders"
         options={{
           title: 'Đơn hàng',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="list" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="account"
         options={{
           title: 'Tài khoản',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="person" focused={focused} color={color} />,
         }}
       />
       {/* Hidden from tabs */}
@@ -73,3 +76,36 @@ export default function CustomerLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBar: {
+    height: 68,
+    paddingBottom: 10,
+    paddingTop: 6,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    elevation: 12,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 },
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  tabItem: { paddingTop: 2 },
+  iconWrap: {
+    width: 44,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  iconWrapActive: {
+    backgroundColor: Colors.blueGlass,
+  },
+});

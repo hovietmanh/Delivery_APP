@@ -4,13 +4,15 @@ import {
 } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOrderStore } from '@store/order.store';
 import { vouchersApi } from '@services/vouchers.api';
 import { StepIndicator } from '@components/ui/StepIndicator';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const STEPS = [{ label: 'Tuyến' }, { label: 'Xe' }, { label: 'Hàng hóa' }, { label: 'Xem lại' }];
 
@@ -108,9 +110,12 @@ export default function SendStep4() {
 
       <ScrollView contentContainerStyle={{ padding: Layout.padding, paddingBottom: insets.bottom + 100 }}>
         {/* ── Thông tin chuyến ── */}
-        <View style={styles.tripSummaryCard}>
+        <LinearGradient colors={['#0F172A', '#1E293B']} style={styles.tripSummaryCard}>
           <View style={styles.tripHeader}>
-            <Text style={styles.tripLabel}>🚌 {tripData?.companyName ?? 'Nhà xe'} · {draft.departureTime}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Ionicons name="bus" size={16} color={Colors.blueLight} style={{ marginRight: 6 }} />
+              <Text style={styles.tripLabel}>{tripData?.companyName ?? 'Nhà xe'} · {draft.departureTime}</Text>
+            </View>
             <TouchableOpacity onPress={() => router.back()}>
               <Text style={styles.editBtn}>Sửa</Text>
             </TouchableOpacity>
@@ -129,16 +134,20 @@ export default function SendStep4() {
             </View>
           </View>
           <View style={styles.metaRow}>
-            <Text style={styles.metaItem}>📦 {draft.goodsType}</Text>
-            <Text style={styles.metaItem}>
-              ⚖️ {(draft as any).weightKg ? `${(draft as any).weightKg} kg` : WEIGHT_LABELS[draft.weightRange ?? '']}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="cube-outline" size={13} color="rgba(255,255,255,0.6)" style={{ marginRight: 5 }} />
+              <Text style={styles.metaItem}>{draft.goodsType}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="scale-outline" size={13} color="rgba(255,255,255,0.6)" style={{ marginRight: 5 }} />
+              <Text style={styles.metaItem}>{(draft as any).weightKg ? `${(draft as any).weightKg} kg` : WEIGHT_LABELS[draft.weightRange ?? '']}</Text>
+            </View>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* ── Người gửi → Nhận ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>👤 Người gửi → Người nhận</Text>
+          <Text style={styles.cardTitle}>Người gửi → Người nhận</Text>
           {[
             { label: 'Gửi', value: `${draft.senderName} · ${draft.senderPhone}` },
             { label: 'Nhận', value: `${draft.receiverName} · ${draft.receiverPhone}` },
@@ -154,7 +163,7 @@ export default function SendStep4() {
         {/* ── Mã giảm giá ── */}
         {appliedVoucher ? (
           <View style={styles.couponApplied}>
-            <Text style={styles.couponAppliedIcon}>🎁</Text>
+            <Ionicons name="gift-outline" size={22} color={Colors.success} style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.couponAppliedCode}>{appliedVoucher.code}</Text>
               <Text style={styles.couponAppliedSave}>
@@ -178,12 +187,12 @@ export default function SendStep4() {
               </View>
             </View>
             <TouchableOpacity onPress={removeVoucher} style={styles.couponRemove}>
-              <Text style={styles.couponRemoveText}>✕</Text>
+              <Ionicons name="close-circle" size={20} color={Colors.secondary} />
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.couponRow}>
-            <Text style={styles.couponIcon}>🎁</Text>
+            <Ionicons name="gift-outline" size={20} color={Colors.secondary} style={{ marginRight: 8 }} />
             <TextInput
               style={styles.couponInput}
               placeholder="Nhập mã giảm giá..."
@@ -231,9 +240,11 @@ export default function SendStep4() {
 
         {/* ── Phương thức thanh toán ── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>💳 Phương thức thanh toán</Text>
+          <Text style={styles.cardTitle}>Phương thức thanh toán</Text>
           <View style={styles.paymentOption}>
-            <Text style={styles.paymentIcon}>💵</Text>
+            <View style={styles.paymentIconWrap}>
+              <Ionicons name="cash-outline" size={24} color={Colors.blue} />
+            </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.paymentLabel}>Tiền mặt tại bến</Text>
               <Text style={styles.paymentDesc}>Nộp tiền khi giao hàng cho nhà xe</Text>
@@ -243,7 +254,8 @@ export default function SendStep4() {
             </View>
           </View>
           <View style={styles.secureNote}>
-            <Text style={styles.secureText}>🔒 Giao dịch an toàn tuyệt đối</Text>
+            <Ionicons name="lock-closed-outline" size={14} color={Colors.success} style={{ marginRight: 5 }} />
+            <Text style={styles.secureText}>Giao dịch an toàn tuyệt đối</Text>
           </View>
         </View>
       </ScrollView>
@@ -262,8 +274,8 @@ export default function SendStep4() {
 
 const styles = StyleSheet.create({
   tripSummaryCard: {
-    backgroundColor: Colors.navy, borderRadius: Layout.radiusLg,
-    padding: Layout.cardPadding, marginBottom: 10,
+    borderRadius: Layout.radiusLg,
+    padding: Layout.cardPadding, marginBottom: 10, ...Shadow.blue,
   },
   tripHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   tripLabel: { ...Typography.bodyBold, color: Colors.white },
@@ -276,7 +288,7 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', gap: 16, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   metaItem: { ...Typography.small, color: 'rgba(255,255,255,0.7)' },
 
-  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10 },
+  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10, ...Shadow.md },
   cardTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 14 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.bg },
   infoLabel: { ...Typography.small, color: Colors.secondary, width: 60 },
@@ -288,7 +300,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.border,
   },
-  couponIcon: { fontSize: 22, marginRight: 8 },
   couponInput: { ...Typography.body, color: Colors.dark, flex: 1, paddingVertical: 4 },
   couponBtn: {
     backgroundColor: Colors.blue, borderRadius: 8,
@@ -302,13 +313,11 @@ const styles = StyleSheet.create({
     padding: 14, marginBottom: 4,
     borderWidth: 1.5, borderColor: Colors.success,
   },
-  couponAppliedIcon: { fontSize: 22, marginRight: 10 },
   couponAppliedCode: { ...Typography.bodyBold, color: Colors.success },
   couponAppliedSave: { ...Typography.small, color: Colors.success, marginTop: 2 },
   couponMeta: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 2 },
   couponMetaText: { ...Typography.caption, color: Colors.secondary },
   couponRemove: { padding: 4 },
-  couponRemoveText: { fontSize: 16, color: Colors.secondary },
 
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7 },
   priceLabel: { ...Typography.small, color: Colors.secondary },
@@ -324,14 +333,14 @@ const styles = StyleSheet.create({
     borderRadius: Layout.radius, padding: 12, marginBottom: 8,
     backgroundColor: Colors.infoBg,
   },
-  paymentIcon: { fontSize: 26 },
+  paymentIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
   paymentLabel: { ...Typography.bodyBold, color: Colors.dark },
   paymentDesc: { ...Typography.caption, color: Colors.secondary, marginTop: 2 },
   radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
   radioActive: { borderColor: Colors.blue },
   radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.blue },
-  secureNote: { alignItems: 'center', marginTop: 8 },
+  secureNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   secureText: { ...Typography.small, color: Colors.success },
 
-  footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border },
+  footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
 });

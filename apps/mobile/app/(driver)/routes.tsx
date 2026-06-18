@@ -4,10 +4,12 @@ import {
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { driverRoutesApi } from '@services/driver-routes.api';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const CITIES = [
   'Hà Nội', 'TP.HCM', 'Đà Nẵng', 'Nghệ An', 'Huế', 'Hải Phòng',
@@ -101,12 +103,18 @@ export default function DriverTodayRouteScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.headerTitle}>🗺️ Tuyến hôm nay</Text>
-        <View style={[styles.statusBadge, isSet ? styles.statusActive : styles.statusInactive]}>
-          <Text style={styles.statusText}>{isSet ? '● Đang hoạt động' : '○ Chưa thiết lập'}</Text>
+      <LinearGradient colors={['#0F172A', '#1E293B']} style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerTitle}>Tuyến hôm nay</Text>
+            <Text style={styles.headerSub}>Thiết lập tuyến để nhận đơn hàng</Text>
+          </View>
+          <View style={[styles.statusBadge, isSet ? styles.statusActive : styles.statusInactive]}>
+            <View style={[styles.statusDot, { backgroundColor: isSet ? Colors.success : Colors.placeholder }]} />
+            <Text style={styles.statusText}>{isSet ? 'Đang hoạt động' : 'Chưa thiết lập'}</Text>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
       {/* Warning banner if not set */}
       {!isSet && (
@@ -144,19 +152,21 @@ export default function DriverTodayRouteScreen() {
           {/* From city */}
           <Text style={styles.fieldLabel}>Bến xuất phát *</Text>
           <TouchableOpacity style={styles.selectBox} onPress={() => setCityPicker('from')}>
+            <Ionicons name="location-outline" size={18} color={Colors.blue} style={{ marginRight: 10 }} />
             <Text style={fromCity ? styles.selectText : styles.selectPlaceholder}>
               {fromCity || 'Chọn thành phố xuất phát...'}
             </Text>
-            <Text style={styles.selectArrow}>›</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.placeholder} />
           </TouchableOpacity>
 
           {/* To city */}
           <Text style={styles.fieldLabel}>Bến đến *</Text>
           <TouchableOpacity style={styles.selectBox} onPress={() => setCityPicker('to')}>
+            <Ionicons name="flag-outline" size={18} color={Colors.success} style={{ marginRight: 10 }} />
             <Text style={toCity ? styles.selectText : styles.selectPlaceholder}>
               {toCity || 'Chọn thành phố điểm đến...'}
             </Text>
-            <Text style={styles.selectArrow}>›</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.placeholder} />
           </TouchableOpacity>
 
           {/* Departure time */}
@@ -266,13 +276,13 @@ export default function DriverTodayRouteScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    backgroundColor: Colors.navy, paddingHorizontal: Layout.padding, paddingBottom: 16,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
+  header: { paddingHorizontal: Layout.padding, paddingBottom: 18 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerTitle: { ...Typography.h3, color: Colors.white },
-  statusBadge: { borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
-  statusActive: { backgroundColor: '#16A34A30' },
+  headerSub: { ...Typography.caption, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusActive: { backgroundColor: 'rgba(16,185,129,0.15)' },
   statusInactive: { backgroundColor: 'rgba(255,255,255,0.1)' },
   statusText: { ...Typography.caption, color: Colors.white, fontWeight: '600' },
 
@@ -284,14 +294,14 @@ const styles = StyleSheet.create({
 
   activeCard: {
     backgroundColor: Colors.blue, borderRadius: Layout.radiusLg,
-    padding: 16, marginBottom: 14,
+    padding: 16, marginBottom: 14, ...Shadow.blue,
   },
   activeCardLabel: { ...Typography.caption, color: 'rgba(255,255,255,0.7)', letterSpacing: 1, marginBottom: 4 },
   activeCardRoute: { ...Typography.h3, color: Colors.white, marginBottom: 8 },
   activeCardMeta: { flexDirection: 'row', gap: 16 },
   activeMetaItem: { ...Typography.bodyBold, color: 'rgba(255,255,255,0.9)' },
 
-  formCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: 16 },
+  formCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: 16, ...Shadow.sm },
   formTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 14 },
 
   fieldLabel: { ...Typography.caption, color: Colors.secondary, marginBottom: 6, marginTop: 14 },
@@ -303,7 +313,6 @@ const styles = StyleSheet.create({
   },
   selectText: { ...Typography.body, color: Colors.dark, flex: 1 },
   selectPlaceholder: { ...Typography.body, color: Colors.placeholder, flex: 1 },
-  selectArrow: { fontSize: 20, color: Colors.secondary },
 
   presetTimes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   presetChip: {
@@ -329,6 +338,7 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row', gap: 10, padding: Layout.padding,
     backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border,
+    ...Shadow.md,
   },
   clearBtn: {
     borderWidth: 1.5, borderColor: Colors.error, borderRadius: Layout.radius,

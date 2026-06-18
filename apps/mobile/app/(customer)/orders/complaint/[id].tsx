@@ -2,11 +2,13 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert 
 import { useLocalSearchParams, router } from 'expo-router';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ordersApi } from '@services/orders.api';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const REASONS = [
   'Hàng bị hư hỏng',
@@ -84,13 +86,13 @@ export default function ComplaintScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.back}>←</Text>
+      <LinearGradient colors={['#7F1D1D', '#991B1B']} style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={26} color={Colors.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Khiếu nại đơn hàng</Text>
-        <View style={{ width: 36 }} />
-      </View>
+        <View style={{ width: 44 }} />
+      </LinearGradient>
 
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -297,11 +299,11 @@ export default function ComplaintScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: Colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  back: { fontSize: 22, color: Colors.dark },
-  headerTitle: { ...Typography.h4, color: Colors.dark },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 14 },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12 },
+  headerTitle: { ...Typography.h4, color: Colors.white },
 
-  statusCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.border, borderLeftWidth: 4 },
+  statusCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: 16, marginBottom: 12, ...Shadow.md, borderLeftWidth: 4 },
   statusIcon: { fontSize: 28, marginRight: 14 },
   statusLabel: { ...Typography.bodyBold },
   statusDate: { ...Typography.caption, color: Colors.secondary, marginTop: 3 },
@@ -310,7 +312,7 @@ const styles = StyleSheet.create({
   warnIcon: { fontSize: 20, marginRight: 10, marginTop: 1 },
   warnText: { ...Typography.small, color: '#92400E', flex: 1, lineHeight: 20 },
 
-  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
+  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 12, ...Shadow.md },
   cardTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 14 },
 
   reasonRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.bg },
@@ -339,10 +341,10 @@ const styles = StyleSheet.create({
   voucherCode: { ...Typography.h3, color: Colors.success, letterSpacing: 1 },
   voucherNote: { ...Typography.caption, color: Colors.secondary, marginTop: 4 },
 
-  waitingCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: 32, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  waitingCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: 32, alignItems: 'center', ...Shadow.md },
   waitingIcon: { fontSize: 40, marginBottom: 12 },
   waitingText: { ...Typography.bodyBold, color: Colors.dark, marginBottom: 6 },
   waitingSub: { ...Typography.small, color: Colors.secondary },
 
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.white, padding: Layout.padding, borderTopWidth: 1, borderTopColor: Colors.border },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.white, padding: Layout.padding, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
 });

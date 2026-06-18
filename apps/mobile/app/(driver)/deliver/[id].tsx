@@ -2,13 +2,15 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Image, Tex
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { driverApi } from '@services/driver.api';
 import { uploadPhotos } from '@services/upload';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const REQUIRED_PHOTOS = 3;
 
@@ -107,13 +109,13 @@ export default function DeliverScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.back}>←</Text>
+      <LinearGradient colors={['#0F172A', '#1E293B']} style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={26} color={Colors.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Xác nhận giao hàng</Text>
-        <View style={{ width: 36 }} />
-      </View>
+        <View style={{ width: 44 }} />
+      </LinearGradient>
 
       {/* Step indicator */}
       <View style={styles.stepBar}>
@@ -236,9 +238,9 @@ export default function DeliverScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: Colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  back: { fontSize: 22, color: Colors.dark },
-  headerTitle: { ...Typography.h4, color: Colors.dark },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 14 },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12 },
+  headerTitle: { ...Typography.h4, color: Colors.white },
 
   stepBar: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 14, backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.border },
   stepItem: { alignItems: 'center' },
@@ -257,7 +259,7 @@ const styles = StyleSheet.create({
   summaryAmountLabel: { ...Typography.body, color: 'rgba(255,255,255,0.7)' },
   summaryAmount: { ...Typography.h4, color: Colors.warning },
 
-  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10, borderWidth: 1, borderColor: Colors.border },
+  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10, ...Shadow.md },
   cardTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 6 },
   cardSub: { ...Typography.small, color: Colors.secondary, marginBottom: 14 },
 

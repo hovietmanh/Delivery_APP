@@ -4,11 +4,13 @@ import {
 } from 'react-native';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { driverApi } from '@services/driver.api';
 import { ordersApi } from '@services/orders.api';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 import { Button } from '@components/ui/Button';
 
 const STATUS_INFO: Record<string, { label: string; color: string; icon: string }> = {
@@ -250,14 +252,20 @@ export default function ComplaintsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.headerTitle}>Khiếu nại</Text>
-        {pending > 0 && (
-          <View style={styles.countChip}>
-            <Text style={styles.countText}>{pending} cần xử lý</Text>
+      <LinearGradient colors={['#0F172A', '#1E293B']} style={[styles.header, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerTitle}>Khiếu nại</Text>
+            <Text style={styles.headerSub}>Quản lý phản hồi từ khách hàng</Text>
           </View>
-        )}
-      </View>
+          {pending > 0 && (
+            <View style={styles.countChip}>
+              <Ionicons name="alert-circle" size={14} color={Colors.error} style={{ marginRight: 5 }} />
+              <Text style={styles.countText}>{pending} cần xử lý</Text>
+            </View>
+          )}
+        </View>
+      </LinearGradient>
 
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -265,8 +273,11 @@ export default function ComplaintsScreen() {
         </View>
       ) : complaints.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>😊</Text>
+          <View style={styles.emptyIconWrap}>
+            <Ionicons name="checkmark-circle-outline" size={44} color={Colors.success} />
+          </View>
           <Text style={styles.emptyText}>Không có khiếu nại nào</Text>
+          <Text style={styles.emptyDesc}>Tất cả đơn hàng đang được xử lý tốt</Text>
         </View>
       ) : (
         <FlatList
@@ -281,12 +292,14 @@ export default function ComplaintsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: Colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  headerTitle: { ...Typography.h3, color: Colors.dark },
-  countChip: { backgroundColor: Colors.errorBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  header: { paddingHorizontal: Layout.padding, paddingBottom: 18 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerTitle: { ...Typography.h3, color: Colors.white },
+  headerSub: { ...Typography.caption, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  countChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.errorBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
   countText: { ...Typography.smallBold, color: Colors.error },
 
-  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 12, borderWidth: 1, borderColor: Colors.border },
+  card: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 12, ...Shadow.md },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   orderCode: { ...Typography.bodyBold, color: Colors.navy },
   customerInfo: { ...Typography.small, color: Colors.dark, marginTop: 2 },
@@ -334,7 +347,8 @@ const styles = StyleSheet.create({
   infoNote: { backgroundColor: Colors.infoBg, borderRadius: Layout.radiusSm, padding: 10, marginTop: 8 },
   infoNoteText: { ...Typography.caption, color: Colors.blue, lineHeight: 18 },
 
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyIcon: { fontSize: 52, marginBottom: 12 },
-  emptyText: { ...Typography.body, color: Colors.secondary },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: Colors.successBg, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyText: { ...Typography.h4, color: Colors.dark, marginBottom: 6, textAlign: 'center' },
+  emptyDesc: { ...Typography.body, color: Colors.secondary, textAlign: 'center' },
 });

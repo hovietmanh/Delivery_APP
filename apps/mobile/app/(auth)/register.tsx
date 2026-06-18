@@ -6,10 +6,12 @@ import { router } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authApi } from '@services/auth.api';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const schema = z.object({
   fullName: z.string().min(2, 'Nhập họ và tên'),
@@ -52,13 +54,17 @@ export default function RegisterScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
+        <LinearGradient colors={['#0F172A', '#1E3A8A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: insets.top + 16 }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Quay lại</Text>
+            <Ionicons name="chevron-back" size={22} color={Colors.white} />
+            <Text style={styles.backText}>Quay lại</Text>
           </TouchableOpacity>
+          <View style={styles.headerIconWrap}>
+            <Ionicons name="person-add-outline" size={32} color={Colors.blueLight} />
+          </View>
           <Text style={styles.title}>Tạo tài khoản</Text>
           <Text style={styles.subtitle}>Đăng ký để gửi hàng liên tỉnh</Text>
-        </View>
+        </LinearGradient>
 
         <View style={styles.form}>
           {fields.map(({ name, label, placeholder, icon, type, secure }) => (
@@ -103,18 +109,17 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: Colors.white },
+  scroll: { flex: 1, backgroundColor: Colors.bg },
   header: {
-    backgroundColor: Colors.navy,
     padding: Layout.paddingLg,
-    paddingTop: 56,
-    paddingBottom: 32,
+    paddingBottom: 36,
   },
-  backBtn: { marginBottom: 16 },
-  backText: { color: 'rgba(255,255,255,0.8)', ...Typography.body },
+  backBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, alignSelf: 'flex-start' },
+  backText: { color: 'rgba(255,255,255,0.8)', ...Typography.body, marginLeft: 4 },
+  headerIconWrap: { width: 68, height: 68, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   title: { ...Typography.h1, color: Colors.white },
   subtitle: { ...Typography.small, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
-  form: { padding: Layout.padding, marginTop: 8 },
+  form: { padding: Layout.padding, marginTop: 8, backgroundColor: Colors.bg },
   label: { ...Typography.smallBold, color: Colors.secondary, marginBottom: 8, letterSpacing: 0.5 },
   inputWrap: {
     flexDirection: 'row', alignItems: 'center',
@@ -129,7 +134,7 @@ const styles = StyleSheet.create({
   btn: {
     backgroundColor: Colors.blue, borderRadius: Layout.radius,
     height: Layout.buttonHeight, alignItems: 'center',
-    justifyContent: 'center', marginTop: 8,
+    justifyContent: 'center', marginTop: 8, ...Shadow.blue,
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { ...Typography.h4, color: Colors.white },

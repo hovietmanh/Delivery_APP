@@ -2,19 +2,21 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } 
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@store/auth.store';
 import { driverApi } from '@services/driver.api';
 import { driverRoutesApi } from '@services/driver-routes.api';
 import { Badge } from '@components/ui/Badge';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const TABS = [
-  { key: 'PENDING', label: 'Chờ xác nhận' },
-  { key: 'CONFIRMED', label: 'Đã nhận' },
-  { key: 'PICKING_UP', label: 'Đang lấy' },
-  { key: 'DELIVERING', label: 'Đang giao' },
+  { key: 'PENDING',    label: 'Chờ duyệt',  color: Colors.warning },
+  { key: 'CONFIRMED',  label: 'Đã nhận',    color: Colors.blue },
+  { key: 'PICKING_UP', label: 'Đang lấy',   color: '#8B5CF6' },
+  { key: 'DELIVERING', label: 'Đang giao',  color: Colors.success },
 ];
 
 const GOODS_LABELS: Record<string, string> = {
@@ -52,104 +54,131 @@ export default function DriverHomeScreen() {
 
   const onRefresh = async () => { setRefreshing(true); await refetch(); setRefreshing(false); };
 
+  const activeTabConfig = TABS.find(t => t.key === activeTab);
+
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <View>
-          <Text style={styles.greeting}>Xin chào,</Text>
-          <Text style={styles.name}>{user?.fullName}</Text>
-          {user?.companyName && <Text style={styles.company}>🏢 {user.companyName}</Text>}
-          {user?.vehiclePlate && <Text style={styles.plate}>🚌 {user.vehiclePlate}</Text>}
-        </View>
-        <TouchableOpacity onPress={() => router.push('/(driver)/trip' as any)}>
-          <View style={styles.activeTripBtn}>
-            <Text style={styles.activeTripIcon}>🗺️</Text>
-            <Text style={styles.activeTripText}>Hành trình</Text>
+      {/* Gradient header */}
+      <LinearGradient
+        colors={['#0F172A', '#1E293B']}
+        style={[styles.header, { paddingTop: insets.top + 16 }]}
+      >
+        <View style={styles.headerContent}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting}>Xin chào,</Text>
+            <Text style={styles.name}>{user?.fullName}</Text>
+            {user?.vehiclePlate && (
+              <View style={styles.plateChip}>
+                <Ionicons name="bus" size={11} color={Colors.blueLight} style={{ marginRight: 5 }} />
+                <Text style={styles.plateText}>{user.vehiclePlate}</Text>
+              </View>
+            )}
           </View>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.tripBtn}
+            onPress={() => router.push('/(driver)/trip' as any)}
+            activeOpacity={0.85}
+          >
+            <LinearGradient colors={[Colors.blueDark, Colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+            <Ionicons name="map-outline" size={18} color={Colors.white} style={{ marginRight: 6 }} />
+            <Text style={styles.tripBtnText}>Hành trình</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* Today route warning banner */}
+        {/* Stats row */}
+        {stats && (
+          <View style={styles.statsRow}>
+            {[
+              { value: stats.pending, label: 'Chờ duyệt', color: Colors.warning },
+              { value: stats.today, label: 'Hôm nay', color: Colors.blueLight },
+              { value: stats.delivered, label: 'Đã giao', color: Colors.success },
+            ].map(({ value, label, color }) => (
+              <View key={label} style={styles.statItem}>
+                <Text style={[styles.statValue, { color }]}>{value}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </LinearGradient>
+
+      {/* Route banner */}
       {todayRoute && !todayRoute.isSet && (
         <TouchableOpacity style={styles.routeWarning} onPress={() => router.push('/(driver)/routes' as any)}>
-          <Text style={styles.routeWarningText}>
-            ⚠️ Chưa thiết lập tuyến hôm nay — bạn sẽ không nhận được đơn!
-          </Text>
-          <Text style={styles.routeWarningAction}>Thiết lập ngay →</Text>
+          <Ionicons name="warning-outline" size={18} color='#B45309' style={{ marginRight: 10 }} />
+          <Text style={styles.routeWarningText}>Chưa thiết lập tuyến hôm nay — bạn sẽ không nhận được đơn!</Text>
+          <Text style={styles.routeWarningAction}>Thiết lập →</Text>
         </TouchableOpacity>
       )}
       {todayRoute?.isSet && (
         <TouchableOpacity style={styles.routeActive} onPress={() => router.push('/(driver)/routes' as any)}>
-          <Text style={styles.routeActiveText}>
-            🗺️ {todayRoute.fromCity} → {todayRoute.toCity} · 🕐 {todayRoute.departureTime}
-          </Text>
+          <Ionicons name="navigate" size={16} color={Colors.success} style={{ marginRight: 10 }} />
+          <Text style={styles.routeActiveText}>{todayRoute.fromCity} → {todayRoute.toCity} · {todayRoute.departureTime}</Text>
           <Text style={styles.routeActiveEdit}>Sửa</Text>
         </TouchableOpacity>
       )}
 
-      {/* Stats bar */}
-      {stats && (
-        <View style={styles.statsBar}>
-          {[
-            { value: stats.pending, label: 'Chờ duyệt', color: Colors.warning },
-            { value: stats.today, label: 'Hôm nay', color: Colors.blue },
-            { value: stats.delivered, label: 'Đã giao', color: Colors.success },
-          ].map(({ value, label, color }) => (
-            <View key={label} style={styles.statItem}>
-              <Text style={[styles.statValue, { color }]}>{value}</Text>
-              <Text style={styles.statLabel}>{label}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>
-        {TABS.map(({ key, label }) => {
-          const count = (stats as any)?.tabCounts?.[key] ?? 0;
-          return (
-            <TouchableOpacity
-              key={key}
-              style={[styles.tab, activeTab === key && styles.tabActive]}
-              onPress={() => setActiveTab(key)}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.tabText, activeTab === key && styles.tabTextActive]}>{label}</Text>
+      {/* Pill tabs */}
+      <View style={styles.tabsWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContent}>
+          {TABS.map(({ key, label, color }) => {
+            const count = (stats as any)?.tabCounts?.[key] ?? 0;
+            const isActive = activeTab === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[styles.tab, isActive && { backgroundColor: color }]}
+                onPress={() => setActiveTab(key)}
+              >
+                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{label}</Text>
                 {count > 0 && (
-                  <Text style={[styles.tabBadge, activeTab === key && styles.tabBadgeActive]}>({count})</Text>
+                  <View style={[styles.tabBadge, isActive && { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                    <Text style={[styles.tabBadgeText, isActive && { color: Colors.white }]}>{count}</Text>
+                  </View>
                 )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <ScrollView
         contentContainerStyle={{ padding: Layout.padding, paddingBottom: insets.bottom + 80 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.blueLight} />}
       >
-        {orders.length === 0 ? (
+        {(orders as any[]).length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📭</Text>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="clipboard-outline" size={44} color={Colors.blueLight} />
+            </View>
             <Text style={styles.emptyText}>Không có đơn hàng nào</Text>
+            <Text style={styles.emptyDesc}>Kéo để làm mới danh sách</Text>
           </View>
         ) : (
-          orders.map((order: any) => (
+          (orders as any[]).map((order: any) => (
             <TouchableOpacity
               key={order.id}
               style={styles.orderCard}
               onPress={() => router.push(`/(driver)/order/${order.id}` as any)}
+              activeOpacity={0.88}
             >
               <View style={styles.cardHeader}>
-                <Text style={styles.trackingCode}>{order.trackingCode}</Text>
-                <Badge status={order.status} />
+                <Text style={styles.trackingCode}>#{order.trackingCode}</Text>
+                <Badge status={order.status} size="sm" />
               </View>
 
               <View style={styles.routeRow}>
-                <View style={styles.cityChip}><Text style={styles.cityText}>{order.fromCity}</Text></View>
-                <Text style={styles.arrow}>→</Text>
-                <View style={styles.cityChip}><Text style={styles.cityText}>{order.toCity}</Text></View>
+                <View style={styles.cityChip}>
+                  <Ionicons name="location-outline" size={12} color={Colors.blue} style={{ marginRight: 4 }} />
+                  <Text style={styles.cityText}>{order.fromCity}</Text>
+                </View>
+                <Ionicons name="arrow-forward" size={16} color={Colors.placeholder} style={{ marginHorizontal: 8 }} />
+                <View style={styles.cityChip}>
+                  <Ionicons name="flag-outline" size={12} color={Colors.success} style={{ marginRight: 4 }} />
+                  <Text style={styles.cityText}>{order.toCity}</Text>
+                </View>
+                <View style={{ flex: 1 }} />
+                <Text style={styles.price}>{order.total?.toLocaleString('vi-VN')}đ</Text>
               </View>
 
               <View style={styles.cardFooter}>
@@ -158,30 +187,32 @@ export default function DriverHomeScreen() {
                   {' · '}
                   {order.weightKg ? `${order.weightKg} kg` : (WEIGHT_LABELS[order.weightRange] ?? order.weightRange)}
                 </Text>
-                <Text style={styles.price}>{order.total?.toLocaleString('vi-VN')}đ</Text>
               </View>
 
               <View style={styles.receiverRow}>
-                <Text style={styles.receiverText}>📬 {order.receiverName} · {order.receiverPhone}</Text>
+                <Ionicons name="person-outline" size={13} color={Colors.secondary} style={{ marginRight: 6 }} />
+                <Text style={styles.receiverText}>{order.receiverName} · {order.receiverPhone}</Text>
               </View>
 
-              {/* Quick-action for ARRIVED / OUT_FOR_DELIVERY */}
+              {/* Quick actions */}
               {(order.status === 'ARRIVED' || order.status === 'OUT_FOR_DELIVERY') && (
                 <TouchableOpacity
-                  style={[styles.quickAction, order.status === 'OUT_FOR_DELIVERY' && styles.quickActionDelivering]}
+                  style={[styles.quickAction, { backgroundColor: order.status === 'OUT_FOR_DELIVERY' ? Colors.infoBg : Colors.successBg }]}
                   onPress={(e) => { e.stopPropagation(); router.push(`/(driver)/deliver/${order.id}` as any); }}
                 >
-                  <Text style={styles.quickActionText}>
-                    {order.status === 'ARRIVED' ? '📦 Giao cho khách →' : '📸 Hoàn tất giao →'}
+                  <Ionicons name={order.status === 'OUT_FOR_DELIVERY' ? 'camera-outline' : 'cube-outline'} size={15} color={order.status === 'OUT_FOR_DELIVERY' ? Colors.blue : Colors.success} style={{ marginRight: 6 }} />
+                  <Text style={[styles.quickActionText, { color: order.status === 'OUT_FOR_DELIVERY' ? Colors.blue : Colors.success }]}>
+                    {order.status === 'ARRIVED' ? 'Giao cho khách →' : 'Hoàn tất giao →'}
                   </Text>
                 </TouchableOpacity>
               )}
               {order.status === 'PICKING_UP' && (
                 <TouchableOpacity
-                  style={styles.quickActionPickup}
+                  style={[styles.quickAction, { backgroundColor: Colors.purpleBg }]}
                   onPress={(e) => { e.stopPropagation(); router.push(`/(driver)/pickup/${order.id}` as any); }}
                 >
-                  <Text style={styles.quickActionText}>📸 Chụp ảnh lấy hàng →</Text>
+                  <Ionicons name="camera-outline" size={15} color={Colors.purple} style={{ marginRight: 6 }} />
+                  <Text style={[styles.quickActionText, { color: Colors.purple }]}>Chụp ảnh lấy hàng →</Text>
                 </TouchableOpacity>
               )}
             </TouchableOpacity>
@@ -193,61 +224,51 @@ export default function DriverHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: Colors.navy, paddingHorizontal: Layout.padding, paddingBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  greeting: { ...Typography.body, color: 'rgba(255,255,255,0.7)' },
-  name: { ...Typography.h3, color: Colors.white },
-  company: { ...Typography.caption, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
-  plate: { ...Typography.small, color: Colors.blueLight, marginTop: 2 },
-  activeTripBtn: { backgroundColor: Colors.blue, borderRadius: Layout.radius, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center' },
-  activeTripIcon: { fontSize: 20 },
-  activeTripText: { ...Typography.caption, color: Colors.white },
+  header: { paddingHorizontal: Layout.padding, paddingBottom: 20 },
+  headerContent: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 18 },
+  greeting: { ...Typography.small, color: 'rgba(255,255,255,0.6)' },
+  name: { ...Typography.h3, color: Colors.white, marginBottom: 6 },
+  plateChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
+  plateText: { ...Typography.caption, color: Colors.blueLight, fontWeight: '600', letterSpacing: 0.5 },
+  tripBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, overflow: 'hidden', ...Shadow.blue },
+  tripBtnText: { ...Typography.smallBold, color: Colors.white },
 
-  routeWarning: {
-    backgroundColor: '#FEF3C7', borderLeftWidth: 4, borderLeftColor: '#F59E0B',
-    paddingHorizontal: Layout.padding, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-  },
-  routeWarningText: { ...Typography.caption, color: '#92400E', flex: 1 },
-  routeWarningAction: { ...Typography.caption, color: '#B45309', fontWeight: '700', marginLeft: 8 },
-  routeActive: {
-    backgroundColor: '#ECFDF5', borderLeftWidth: 4, borderLeftColor: Colors.success,
-    paddingHorizontal: Layout.padding, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-  },
-  routeActiveText: { ...Typography.caption, color: '#065F46', flex: 1 },
-  routeActiveEdit: { ...Typography.caption, color: Colors.blue, fontWeight: '700' },
-
-  statsBar: { flexDirection: 'row', backgroundColor: Colors.white, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  statsRow: { flexDirection: 'row', paddingTop: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { ...Typography.h3 },
-  statLabel: { ...Typography.caption, color: Colors.secondary, marginTop: 2 },
+  statValue: { ...Typography.h3, fontSize: 22, fontWeight: '700' },
+  statLabel: { ...Typography.caption, color: 'rgba(255,255,255,0.55)', marginTop: 3 },
 
-  tabs: { backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  tabsContent: { paddingHorizontal: Layout.padding, paddingTop: 12 },
-  tab: { marginRight: 24, paddingBottom: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: Colors.blue },
-  tabText: { ...Typography.bodyBold, color: Colors.secondary },
-  tabTextActive: { color: Colors.blue },
-  tabBadge: { ...Typography.caption, color: Colors.error, fontWeight: '700', marginLeft: 3 },
-  tabBadgeActive: { color: Colors.error },
+  routeWarning: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', paddingHorizontal: Layout.padding, paddingVertical: 12, borderLeftWidth: 3, borderLeftColor: Colors.warning },
+  routeWarningText: { ...Typography.caption, color: '#92400E', flex: 1 },
+  routeWarningAction: { ...Typography.smallBold, color: '#B45309' },
+  routeActive: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.successBg, paddingHorizontal: Layout.padding, paddingVertical: 12, borderLeftWidth: 3, borderLeftColor: Colors.success },
+  routeActiveText: { ...Typography.caption, color: '#065F46', flex: 1 },
+  routeActiveEdit: { ...Typography.smallBold, color: Colors.blue },
 
-  orderCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10, borderWidth: 1, borderColor: Colors.border },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  trackingCode: { ...Typography.bodyBold, color: Colors.navy },
-  routeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  cityChip: { backgroundColor: Colors.infoBg, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
-  cityText: { ...Typography.bodyBold, color: Colors.blue },
-  arrow: { marginHorizontal: 8, ...Typography.h3, color: Colors.secondary },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  goodsInfo: { ...Typography.small, color: Colors.secondary },
-  price: { ...Typography.bodyBold, color: Colors.success },
-  receiverRow: { backgroundColor: Colors.bg, borderRadius: Layout.radiusSm, padding: 8 },
-  receiverText: { ...Typography.small, color: Colors.secondary },
+  tabsWrap: { backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  tabsContent: { paddingHorizontal: Layout.padding, paddingVertical: 12, gap: 8 },
+  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.bg },
+  tabText: { ...Typography.smallBold, color: Colors.secondary },
+  tabTextActive: { color: Colors.white },
+  tabBadge: { backgroundColor: Colors.error, borderRadius: 10, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, marginLeft: 5 },
+  tabBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.white },
 
   empty: { alignItems: 'center', paddingTop: 80 },
-  emptyIcon: { fontSize: 52, marginBottom: 12 },
-  emptyText: { ...Typography.body, color: Colors.secondary },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: 'rgba(96,165,250,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyText: { ...Typography.h4, color: Colors.white, marginBottom: 6 },
+  emptyDesc: { ...Typography.small, color: 'rgba(255,255,255,0.5)' },
 
-  quickAction: { marginTop: 8, backgroundColor: Colors.successBg, borderRadius: Layout.radiusSm, padding: 10, alignItems: 'center' },
-  quickActionDelivering: { backgroundColor: Colors.infoBg },
-  quickActionPickup: { marginTop: 8, backgroundColor: Colors.warningBg, borderRadius: Layout.radiusSm, padding: 10, alignItems: 'center' },
-  quickActionText: { ...Typography.smallBold, color: Colors.dark },
+  orderCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 12, ...Shadow.md },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  trackingCode: { ...Typography.bodyBold, color: Colors.navy, letterSpacing: 0.3 },
+  routeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  cityChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  cityText: { ...Typography.smallBold, color: Colors.dark },
+  price: { ...Typography.bodyBold, color: Colors.success },
+  cardFooter: { marginBottom: 8 },
+  goodsInfo: { ...Typography.small, color: Colors.secondary },
+  receiverRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg, borderRadius: 10, padding: 10, marginBottom: 4 },
+  receiverText: { ...Typography.small, color: Colors.secondary },
+  quickAction: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, padding: 10, marginTop: 6 },
+  quickActionText: { ...Typography.smallBold },
 });

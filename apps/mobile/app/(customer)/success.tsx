@@ -1,11 +1,12 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Share } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { ordersApi } from '@services/orders.api';
-import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 export default function SuccessScreen() {
   const insets = useSafeAreaInsets();
@@ -52,7 +53,7 @@ export default function SuccessScreen() {
         {order && (
           <>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>🚌 Thông tin vận chuyển</Text>
+              <Text style={styles.cardTitle}>Thông tin vận chuyển</Text>
               {[
                 { label: 'Tuyến đường', value: `${order.fromCity} → ${order.toCity}` },
                 { label: 'Giờ xuất bến', value: order.departureTime ?? '—' },
@@ -67,7 +68,7 @@ export default function SuccessScreen() {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>📬 Người nhận</Text>
+              <Text style={styles.cardTitle}>Người nhận</Text>
               {[
                 { label: 'Tên', value: order.receiverName },
                 { label: 'SĐT', value: order.receiverPhone },
@@ -84,24 +85,33 @@ export default function SuccessScreen() {
 
         {/* ── Chia sẻ mã ── */}
         <TouchableOpacity style={styles.shareRow} onPress={shareCode}>
-          <Text style={styles.shareText}>📲 Chia sẻ mã vận đơn cho người nhận</Text>
+          <Ionicons name="share-social-outline" size={18} color={Colors.blue} style={{ marginRight: 8 }} />
+          <Text style={styles.shareText}>Chia sẻ mã vận đơn cho người nhận</Text>
         </TouchableOpacity>
 
         {/* ── Actions ── */}
         <View style={styles.actions}>
-          <Button
-            label="📦 Theo dõi đơn hàng"
+          <TouchableOpacity
+            style={styles.btnOutline}
             onPress={() => router.replace(`/(customer)/orders/${orderId}` as any)}
-            variant="outline"
-          />
+            activeOpacity={0.8}
+          >
+            <Ionicons name="cube-outline" size={18} color={Colors.blue} style={{ marginRight: 8 }} />
+            <Text style={styles.btnOutlineText}>Theo dõi đơn hàng</Text>
+          </TouchableOpacity>
           <View style={{ height: 10 }} />
-          <Button
-            label="🏠 Về trang chủ"
+          <TouchableOpacity
+            style={styles.btnPrimary}
             onPress={() => {
-              router.replace('/(customer)/send' as any); // reset stack send về bước 1
-              router.replace('/(customer)' as any);      // chuyển về tab trang chủ
+              router.replace('/(customer)/send' as any);
+              router.replace('/(customer)' as any);
             }}
-          />
+            activeOpacity={0.85}
+          >
+            <LinearGradient colors={[Colors.blueDark, Colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+            <Ionicons name="home-outline" size={18} color={Colors.white} style={{ marginRight: 8 }} />
+            <Text style={styles.btnPrimaryText}>Về trang chủ</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -146,9 +156,23 @@ const styles = StyleSheet.create({
 
   shareRow: {
     margin: Layout.padding, borderRadius: Layout.radiusSm, padding: 14,
-    backgroundColor: Colors.infoBg, alignItems: 'center',
+    backgroundColor: Colors.infoBg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
   },
   shareText: { ...Typography.bodyBold, color: Colors.blue },
 
   actions: { paddingHorizontal: Layout.padding, marginTop: 8 },
+
+  btnOutline: {
+    height: Layout.buttonHeight, borderRadius: Layout.radius,
+    borderWidth: 1.5, borderColor: Colors.blue,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+  },
+  btnOutlineText: { ...Typography.bodyBold, color: Colors.blue },
+
+  btnPrimary: {
+    height: Layout.buttonHeight, borderRadius: Layout.radius,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden', ...Shadow.blue,
+  },
+  btnPrimaryText: { ...Typography.bodyBold, color: Colors.white },
 });

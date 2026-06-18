@@ -59,6 +59,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingBottom: 12,
     paddingHorizontal: 20,
+    elevation: 3,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
 
   stepsRow: {

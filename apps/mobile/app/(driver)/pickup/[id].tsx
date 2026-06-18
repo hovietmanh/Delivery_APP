@@ -2,13 +2,15 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Image } fr
 import { useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { driverApi } from '@services/driver.api';
 import { uploadPhotos } from '@services/upload';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const REQUIRED_PHOTOS = 3;
 
@@ -70,13 +72,13 @@ export default function PickupConfirmScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.back}>←</Text>
+      <LinearGradient colors={['#0F172A', '#1E293B']} style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={26} color={Colors.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Xác nhận lấy hàng</Text>
-        <View style={{ width: 36 }} />
-      </View>
+        <View style={{ width: 44 }} />
+      </LinearGradient>
 
       <ScrollView contentContainerStyle={{ padding: Layout.padding, paddingBottom: insets.bottom + 100 }}>
         {/* Instruction */}
@@ -139,30 +141,30 @@ export default function PickupConfirmScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: Colors.white, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  back: { fontSize: 22, color: Colors.dark },
-  headerTitle: { ...Typography.h4, color: Colors.dark },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.padding, paddingBottom: 14 },
+  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12 },
+  headerTitle: { ...Typography.h4, color: Colors.white },
 
-  instructionCard: { backgroundColor: Colors.infoBg, borderRadius: Layout.radiusLg, padding: 16, marginBottom: 16, alignItems: 'center' },
-  instructionIcon: { fontSize: 36, marginBottom: 8 },
+  instructionCard: { backgroundColor: Colors.infoBg, borderRadius: Layout.radiusLg, padding: 18, marginBottom: 16, alignItems: 'center', ...Shadow.sm },
+  instructionIcon: { fontSize: 40, marginBottom: 10 },
   instructionTitle: { ...Typography.h4, color: Colors.blue, marginBottom: 6 },
   instructionText: { ...Typography.small, color: Colors.secondary, textAlign: 'center', lineHeight: 20 },
 
-  photosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
-  photoWrap: { width: '30%', aspectRatio: 1, borderRadius: Layout.radius, overflow: 'hidden', position: 'relative' },
+  photosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  photoWrap: { width: '30%', aspectRatio: 1, borderRadius: Layout.radiusSm, overflow: 'hidden', position: 'relative', ...Shadow.sm },
   photo: { width: '100%', height: '100%' },
-  removeBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  removeBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 12, width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   removeX: { color: Colors.white, fontSize: 12, fontWeight: '700' },
-  addPhoto: { width: '30%', aspectRatio: 1, backgroundColor: Colors.white, borderRadius: Layout.radius, borderWidth: 2, borderColor: Colors.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  addPhoto: { width: '30%', aspectRatio: 1, backgroundColor: Colors.white, borderRadius: Layout.radiusSm, borderWidth: 2, borderColor: Colors.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
   addPhotoIcon: { fontSize: 28, marginBottom: 4 },
   addPhotoText: { ...Typography.caption, color: Colors.secondary },
 
   progressRow: { marginBottom: 16 },
   progressText: { ...Typography.bodyBold, color: Colors.warning },
 
-  noteCard: { backgroundColor: Colors.warningBg, borderRadius: Layout.radius, padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.warning },
+  noteCard: { backgroundColor: Colors.warningBg, borderRadius: Layout.radiusLg, padding: 14, borderLeftWidth: 3, borderLeftColor: Colors.warning },
   noteTitle: { ...Typography.bodyBold, color: Colors.warning, marginBottom: 8 },
   noteItem: { ...Typography.small, color: Colors.secondary, marginBottom: 4 },
 
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.white, padding: Layout.padding, borderTopWidth: 1, borderTopColor: Colors.border },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.white, padding: Layout.padding, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
 });

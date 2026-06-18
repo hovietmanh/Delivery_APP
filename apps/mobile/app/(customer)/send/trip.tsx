@@ -1,13 +1,14 @@
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useOrderStore } from '@store/order.store';
 import { tripsApi } from '@services/trips.api';
 import { StepIndicator } from '@components/ui/StepIndicator';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
-import { Typography, Layout } from '@constants/Layout';
+import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const STEPS = [{ label: 'Tuyến' }, { label: 'Xe' }, { label: 'Hàng hóa' }, { label: 'Xem lại' }];
 
@@ -50,7 +51,9 @@ export default function SendStep2() {
           </View>
         ) : drivers.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyIcon}>🚌</Text>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="bus-outline" size={44} color={Colors.blueLight} />
+            </View>
             <Text style={styles.emptyTitle}>Chưa có xe đăng ký tuyến này</Text>
             <Text style={styles.emptyDesc}>
               Tuyến {draft.fromCity} → {draft.toCity} chưa có nhà xe đăng ký.{'\n'}
@@ -75,7 +78,9 @@ export default function SendStep2() {
                     </View>
                   )}
                   <View style={styles.tripTop}>
-                    <Text style={styles.busIcon}>🚌</Text>
+                    <View style={styles.busIconWrap}>
+                      <Ionicons name="bus" size={26} color={Colors.blue} />
+                    </View>
                     <View style={styles.tripInfo}>
                       <Text style={styles.companyName}>{driver.companyName}</Text>
                       <Text style={styles.vehicleType}>{driver.vehicleType}</Text>
@@ -152,14 +157,14 @@ const styles = StyleSheet.create({
   loadingText: { ...Typography.body, color: Colors.secondary },
 
   emptyWrap: { alignItems: 'center', paddingTop: 60 },
-  emptyIcon: { fontSize: 52, marginBottom: 12 },
+  emptyIconWrap: { width: 90, height: 90, borderRadius: 28, backgroundColor: 'rgba(96,165,250,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTitle: { ...Typography.h4, color: Colors.dark, marginBottom: 8 },
   emptyDesc: { ...Typography.small, color: Colors.secondary, textAlign: 'center', lineHeight: 20 },
 
   tripCard: {
     backgroundColor: Colors.white, borderRadius: Layout.radiusLg,
     padding: 16, marginBottom: 10,
-    borderWidth: 2, borderColor: Colors.border,
+    borderWidth: 2, borderColor: 'transparent', ...Shadow.md,
   },
   tripCardActive: { borderColor: Colors.blue, backgroundColor: Colors.infoBg },
   recommendedBadge: {
@@ -169,7 +174,7 @@ const styles = StyleSheet.create({
   },
   recommendedText: { ...Typography.caption, color: Colors.white, fontWeight: '700' },
   tripTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  busIcon: { fontSize: 32, marginRight: 12 },
+  busIconWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: Colors.infoBg, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   tripInfo: { flex: 1 },
   companyName: { ...Typography.h4, color: Colors.dark },
   vehicleType: { ...Typography.small, color: Colors.secondary, marginTop: 2 },
@@ -192,7 +197,7 @@ const styles = StyleSheet.create({
   insuranceRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.white, borderRadius: Layout.radiusLg,
-    padding: 14, marginBottom: 10, borderWidth: 1.5, borderColor: Colors.border,
+    padding: 14, marginBottom: 10, borderWidth: 1.5, borderColor: Colors.border, ...Shadow.sm,
   },
   insuranceActive: { borderColor: Colors.blue, backgroundColor: Colors.infoBg },
   insuranceCheck: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
@@ -201,6 +206,6 @@ const styles = StyleSheet.create({
   insuranceDesc: { ...Typography.caption, color: Colors.secondary, marginTop: 2 },
   insurancePrice: { ...Typography.bodyBold, color: Colors.dark },
 
-  footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border },
+  footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
   footerRow: { flexDirection: 'row' },
 });
