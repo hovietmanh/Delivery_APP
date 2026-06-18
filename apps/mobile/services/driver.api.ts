@@ -8,9 +8,11 @@ export const driverApi = {
   acceptOrder: (id: string) => api.patch(`/driver/orders/${id}/accept`).then((r) => r.data),
   rejectOrder: (id: string, reason: string) =>
     api.patch(`/driver/orders/${id}/reject`, { reason }).then((r) => r.data),
+  startPickup: (id: string) => api.patch(`/driver/orders/${id}/start-pickup`).then((r) => r.data),
   confirmPickup: (id: string, photos: string[]) =>
     api.patch(`/driver/orders/${id}/pickup`, { photos }).then((r) => r.data),
-  confirmDelivery: (id: string, data: { photos: string[]; signature: string; codCollected?: number }) =>
+  startDelivery: (id: string) => api.patch(`/driver/orders/${id}/start-delivery`).then((r) => r.data),
+  confirmDelivery: (id: string, data: { photos: string[]; receiverName: string; amountCollected?: number }) =>
     api.patch(`/driver/orders/${id}/deliver`, data).then((r) => r.data),
   getActiveTrip: () => api.get('/driver/trip/active').then((r) => r.data),
   updateTripCheckpoint: (tripId: string, checkpoint: string) =>

@@ -14,6 +14,7 @@ const TABS = [
   { key: 'PENDING', label: 'Chờ xác nhận' },
   { key: 'CONFIRMED', label: 'Đã nhận' },
   { key: 'PICKING_UP', label: 'Đang lấy' },
+  { key: 'DELIVERING', label: 'Đang giao' },
 ];
 
 const GOODS_LABELS: Record<string, string> = {
@@ -30,10 +31,18 @@ export default function DriverHomeScreen() {
   const [activeTab, setActiveTab] = useState('PENDING');
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: stats } = useQuery({ queryKey: ['driver-stats'], queryFn: driverApi.getStats });
+  const { data: stats } = useQuery({
+    queryKey: ['driver-stats'],
+    queryFn: driverApi.getStats,
+    refetchInterval: 10_000,
+    staleTime: 0,
+  });
   const { data: orders = [], refetch } = useQuery({
     queryKey: ['driver-orders', activeTab],
     queryFn: () => driverApi.getOrders(activeTab),
+    refetchInterval: 10_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
   const { data: todayRoute } = useQuery({
     queryKey: ['today-route'],
@@ -97,15 +106,23 @@ export default function DriverHomeScreen() {
 
       {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs} contentContainerStyle={styles.tabsContent}>
-        {TABS.map(({ key, label }) => (
-          <TouchableOpacity
-            key={key}
-            style={[styles.tab, activeTab === key && styles.tabActive]}
-            onPress={() => setActiveTab(key)}
-          >
-            <Text style={[styles.tabText, activeTab === key && styles.tabTextActive]}>{label}</Text>
-          </TouchableOpacity>
-        ))}
+        {TABS.map(({ key, label }) => {
+          const count = (stats as any)?.tabCounts?.[key] ?? 0;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={[styles.tab, activeTab === key && styles.tabActive]}
+              onPress={() => setActiveTab(key)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[styles.tabText, activeTab === key && styles.tabTextActive]}>{label}</Text>
+                {count > 0 && (
+                  <Text style={[styles.tabBadge, activeTab === key && styles.tabBadgeActive]}>({count})</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
       <ScrollView
@@ -147,6 +164,26 @@ export default function DriverHomeScreen() {
               <View style={styles.receiverRow}>
                 <Text style={styles.receiverText}>📬 {order.receiverName} · {order.receiverPhone}</Text>
               </View>
+
+              {/* Quick-action for ARRIVED / OUT_FOR_DELIVERY */}
+              {(order.status === 'ARRIVED' || order.status === 'OUT_FOR_DELIVERY') && (
+                <TouchableOpacity
+                  style={[styles.quickAction, order.status === 'OUT_FOR_DELIVERY' && styles.quickActionDelivering]}
+                  onPress={(e) => { e.stopPropagation(); router.push(`/(driver)/deliver/${order.id}` as any); }}
+                >
+                  <Text style={styles.quickActionText}>
+                    {order.status === 'ARRIVED' ? '📦 Giao cho khách →' : '📸 Hoàn tất giao →'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {order.status === 'PICKING_UP' && (
+                <TouchableOpacity
+                  style={styles.quickActionPickup}
+                  onPress={(e) => { e.stopPropagation(); router.push(`/(driver)/pickup/${order.id}` as any); }}
+                >
+                  <Text style={styles.quickActionText}>📸 Chụp ảnh lấy hàng →</Text>
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
           ))
         )}
@@ -189,6 +226,8 @@ const styles = StyleSheet.create({
   tabActive: { borderBottomColor: Colors.blue },
   tabText: { ...Typography.bodyBold, color: Colors.secondary },
   tabTextActive: { color: Colors.blue },
+  tabBadge: { ...Typography.caption, color: Colors.error, fontWeight: '700', marginLeft: 3 },
+  tabBadgeActive: { color: Colors.error },
 
   orderCard: { backgroundColor: Colors.white, borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10, borderWidth: 1, borderColor: Colors.border },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -206,4 +245,9 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 80 },
   emptyIcon: { fontSize: 52, marginBottom: 12 },
   emptyText: { ...Typography.body, color: Colors.secondary },
+
+  quickAction: { marginTop: 8, backgroundColor: Colors.successBg, borderRadius: Layout.radiusSm, padding: 10, alignItems: 'center' },
+  quickActionDelivering: { backgroundColor: Colors.infoBg },
+  quickActionPickup: { marginTop: 8, backgroundColor: Colors.warningBg, borderRadius: Layout.radiusSm, padding: 10, alignItems: 'center' },
+  quickActionText: { ...Typography.smallBold, color: Colors.dark },
 });

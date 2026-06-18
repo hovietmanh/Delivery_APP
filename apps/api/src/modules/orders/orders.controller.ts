@@ -53,4 +53,46 @@ export class OrdersController {
   cancel(@Param('id') id: string, @Request() req: any, @Body('reason') reason?: string) {
     return this.ordersService.cancel(id, req.user.id, reason);
   }
+
+  @Post(':id/review')
+  @ApiOperation({ summary: 'Customer submits a review for a delivered order' })
+  createReview(@Param('id') id: string, @Request() req: any, @Body() body: any) {
+    return this.ordersService.createReview(req.user.id, id, body);
+  }
+
+  @Get(':id/review')
+  @ApiOperation({ summary: 'Get review for an order' })
+  getReview(@Param('id') id: string) {
+    return this.ordersService.getReview(id);
+  }
+
+  @Post(':id/complaint')
+  @ApiOperation({ summary: 'Customer files a complaint for a delivered order' })
+  createComplaint(@Param('id') id: string, @Request() req: any, @Body() body: any) {
+    return this.ordersService.createComplaint(req.user.id, id, body);
+  }
+
+  @Get(':id/complaint')
+  @ApiOperation({ summary: 'Get complaint for an order' })
+  getComplaint(@Param('id') id: string) {
+    return this.ordersService.getComplaint(id);
+  }
+
+  @Patch(':id/complaint/resolve')
+  @ApiOperation({ summary: 'Driver resolves complaint (FAULT or NO_FAULT)' })
+  resolveComplaint(@Param('id') id: string, @Request() req: any, @Body() body: { verdict: 'FAULT' | 'NO_FAULT'; message: string }) {
+    return this.ordersService.resolveComplaint(req.user.id, id, body);
+  }
+
+  @Patch(':id/complaint/bank-info')
+  @ApiOperation({ summary: 'Customer submits bank account for refund' })
+  submitBankInfo(@Param('id') id: string, @Request() req: any, @Body('bankAccount') bankAccount: string) {
+    return this.ordersService.submitBankInfo(req.user.id, id, bankAccount);
+  }
+
+  @Patch(':id/complaint/confirm-transfer')
+  @ApiOperation({ summary: 'Driver confirms money has been transferred' })
+  confirmTransfer(@Param('id') id: string, @Request() req: any) {
+    return this.ordersService.confirmTransfer(req.user.id, id);
+  }
 }

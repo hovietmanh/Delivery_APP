@@ -50,32 +50,38 @@ export class DriversController {
   @Patch('orders/:id/reject')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reject order' })
-  rejectOrder(
-    @Request() req: any,
-    @Param('id') id: string,
-    @Body('reason') reason: string,
-  ) {
+  rejectOrder(@Request() req: any, @Param('id') id: string, @Body('reason') reason: string) {
     return this.driversService.rejectOrder(req.user.id, id, reason);
+  }
+
+  @Patch('orders/:id/start-pickup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start pickup — CONFIRMED → PICKING_UP, notify customer to prepare' })
+  startPickup(@Request() req: any, @Param('id') id: string) {
+    return this.driversService.startPickup(req.user.id, id);
   }
 
   @Patch('orders/:id/pickup')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Confirm pickup with photos' })
-  confirmPickup(
-    @Request() req: any,
-    @Param('id') id: string,
-    @Body('photos') photos: string[],
-  ) {
+  @ApiOperation({ summary: 'Confirm pickup with 3 photos — PICKING_UP → AT_STATION' })
+  confirmPickup(@Request() req: any, @Param('id') id: string, @Body('photos') photos: string[]) {
     return this.driversService.confirmPickup(req.user.id, id, photos);
+  }
+
+  @Patch('orders/:id/start-delivery')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start delivery — ARRIVED → OUT_FOR_DELIVERY' })
+  startDelivery(@Request() req: any, @Param('id') id: string) {
+    return this.driversService.startDelivery(req.user.id, id);
   }
 
   @Patch('orders/:id/deliver')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Confirm delivery — photos + signature + COD' })
+  @ApiOperation({ summary: 'Confirm delivery — photos + receiver name + amount collected' })
   confirmDelivery(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { photos: string[]; signature: string; codCollected?: number },
+    @Body() body: { photos: string[]; receiverName: string; amountCollected?: number },
   ) {
     return this.driversService.confirmDelivery(req.user.id, id, body);
   }

@@ -250,6 +250,247 @@ export class OrdersService {
     return updated;
   }
 
+  // ── Review ────────────────────────────────────────────────────────────────
+
+  async createReview(userId: string, orderId: string, dto: {
+    overallRating: number;
+    goodsCareRating: number;
+    staffRating: number;
+    timeRating: number;
+    comment?: string;
+  }) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId } });
+    if (!customer) throw new ForbiddenException();
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { trip: true, review: true },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.customerId !== customer.id) throw new ForbiddenException();
+    if (order.status !== OrderStatus.DELIVERED) throw new BadRequestException('Chỉ được đánh giá đơn đã giao thành công');
+    if (order.review) throw new BadRequestException('Đơn hàng đã được đánh giá');
+    if (!order.trip?.driverId) throw new BadRequestException('Không tìm thấy tài xế');
+
+    const review = await this.prisma.review.create({
+      data: {
+        orderId,
+        customerId: customer.id,
+        driverId: order.trip.driverId,
+        ...dto,
+      },
+    });
+
+    // Cập nhật rating trung bình của tài xế
+    const allReviews = await this.prisma.review.aggregate({
+      where: { driverId: order.trip.driverId },
+      _avg: { overallRating: true },
+    });
+    await this.prisma.driver.update({
+      where: { id: order.trip.driverId },
+      data: { rating: allReviews._avg.overallRating ?? 5 },
+    });
+
+    return review;
+  }
+
+  async getReview(orderId: string) {
+    return this.prisma.review.findUnique({ where: { orderId } });
+  }
+
+  // ── Complaint ─────────────────────────────────────────────────────────────
+
+  async createComplaint(userId: string, orderId: string, dto: {
+    reason: string;
+    description: string;
+    requestedAmount?: number;
+  }) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId } });
+    if (!customer) throw new ForbiddenException();
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { complaint: true, trip: { include: { driver: { include: { user: true } } } } },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.customerId !== customer.id) throw new ForbiddenException();
+    if (order.complaint) throw new BadRequestException('Đơn hàng đã có khiếu nại');
+    if (!['DELIVERED', 'DISPUTED'].includes(order.status)) {
+      throw new BadRequestException('Chỉ được khiếu nại đơn đã giao hoặc đang tranh chấp');
+    }
+
+    const complaint = await this.prisma.complaint.create({
+      data: {
+        orderId,
+        customerId: customer.id,
+        reason: dto.reason,
+        description: dto.description,
+        requestedAmount: dto.requestedAmount,
+        status: 'PENDING' as any,
+      },
+    });
+
+    // Cập nhật trạng thái đơn → DISPUTED
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.DISPUTED },
+    });
+
+    // Thông báo tài xế
+    if (order.trip?.driver?.userId) {
+      this.notificationsService.create({
+        userId: order.trip.driver.userId,
+        title: '⚠️ Khiếu nại mới',
+        body: `Đơn ${order.trackingCode} có khiếu nại: ${dto.reason}`,
+        type: 'complaint',
+        data: { orderId, complaintId: complaint.id },
+      }).catch(() => {});
+    }
+
+    return complaint;
+  }
+
+  async getComplaint(orderId: string) {
+    return this.prisma.complaint.findUnique({ where: { orderId } });
+  }
+
+  // ── Complaint resolution flow ─────────────────────────────────────────────
+
+  async resolveComplaint(userId: string, orderId: string, body: { verdict: 'FAULT' | 'NO_FAULT'; message: string }) {
+    const driver = await this.prisma.driver.findUnique({ where: { userId } });
+    if (!driver) throw new ForbiddenException();
+
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { orderId },
+      include: {
+        order: { include: { trip: { include: { driver: true } } } },
+        customer: { include: { user: { select: { id: true } } } },
+      },
+    });
+    if (!complaint) throw new NotFoundException('Complaint not found');
+    if (complaint.order.trip?.driverId !== driver.id) throw new ForbiddenException('Not your order');
+    if (!['PENDING', 'REVIEWING'].includes(complaint.status as string)) {
+      throw new BadRequestException('Khiếu nại đã được xử lý');
+    }
+
+    if (body.verdict === 'FAULT') {
+      const voucherCode = `SORRY-${orderId.slice(-6).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 ngày
+
+      await this.prisma.voucher.create({
+        data: {
+          code: voucherCode,
+          description: `Xin lỗi - bồi thường khiếu nại đơn ${complaint.order.trackingCode}`,
+          discountType: 'PERCENT' as any,
+          discountValue: 20,
+          maxUses: 1,
+          forCustomerId: complaint.customerId,
+          expiresAt,
+        },
+      });
+
+      await this.prisma.complaint.update({
+        where: { orderId },
+        data: {
+          status: 'AWAITING_BANK_INFO' as any,
+          driverVerdict: 'FAULT',
+          apologyMessage: body.message,
+          apologyVoucherCode: voucherCode,
+        },
+      });
+
+      this.notificationsService.create({
+        userId: complaint.customer.user.id,
+        title: '✅ Khiếu nại được chấp nhận',
+        body: `Nhà xe xác nhận lỗi và gửi lời xin lỗi. Voucher giảm 20% đã được thêm. Vui lòng cung cấp số tài khoản để nhận hoàn tiền.`,
+        type: 'complaint',
+        data: { orderId },
+      }).catch(() => {});
+    } else {
+      await this.prisma.complaint.update({
+        where: { orderId },
+        data: {
+          status: 'RESOLVED_REJECTED' as any,
+          driverVerdict: 'NO_FAULT',
+          resolution: body.message,
+          resolvedAt: new Date(),
+        },
+      });
+
+      this.notificationsService.create({
+        userId: complaint.customer.user.id,
+        title: '❌ Kết quả khiếu nại',
+        body: body.message,
+        type: 'complaint',
+        data: { orderId },
+      }).catch(() => {});
+    }
+    return { success: true };
+  }
+
+  async submitBankInfo(userId: string, orderId: string, bankAccount: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId } });
+    if (!customer) throw new ForbiddenException();
+
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { orderId },
+      include: {
+        order: { select: { trackingCode: true } },
+        customer: true,
+      },
+    });
+    if (!complaint || complaint.customerId !== customer.id) throw new ForbiddenException();
+    if (complaint.status !== 'AWAITING_BANK_INFO') throw new BadRequestException('Trạng thái không hợp lệ');
+
+    await this.prisma.complaint.update({
+      where: { orderId },
+      data: { status: 'AWAITING_TRANSFER' as any, customerBankAccount: bankAccount },
+    });
+
+    // Tìm driver userId để thông báo
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { trip: { include: { driver: { include: { user: { select: { id: true } } } } } } },
+    });
+    if (order?.trip?.driver?.user?.id) {
+      this.notificationsService.create({
+        userId: order.trip.driver.user.id,
+        title: '💰 Khách đã gửi số tài khoản',
+        body: `Đơn ${complaint.order.trackingCode}: khách đã cung cấp tài khoản ngân hàng. Vui lòng chuyển tiền và xác nhận.`,
+        type: 'complaint',
+        data: { orderId },
+      }).catch(() => {});
+    }
+    return { success: true };
+  }
+
+  async confirmTransfer(userId: string, orderId: string) {
+    const driver = await this.prisma.driver.findUnique({ where: { userId } });
+    if (!driver) throw new ForbiddenException();
+
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { orderId },
+      include: {
+        order: { select: { trackingCode: true } },
+        customer: { include: { user: { select: { id: true } } } },
+      },
+    });
+    if (!complaint) throw new NotFoundException();
+    if (complaint.status !== 'AWAITING_TRANSFER') throw new BadRequestException('Trạng thái không hợp lệ');
+
+    await this.prisma.complaint.update({
+      where: { orderId },
+      data: { status: 'RESOLVED_REFUND' as any, resolvedAt: new Date() },
+    });
+
+    this.notificationsService.create({
+      userId: complaint.customer.user.id,
+      title: '✅ Đã nhận được hoàn tiền',
+      body: `Nhà xe đã chuyển tiền hoàn cho đơn ${complaint.order.trackingCode}. Xin cảm ơn.`,
+      type: 'complaint',
+      data: { orderId },
+    }).catch(() => {});
+    return { success: true };
+  }
+
   async getAdminStats() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

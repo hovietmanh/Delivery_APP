@@ -43,10 +43,10 @@ export default function DriverLayout() {
         name="account"
         options={{ tabBarLabel: 'Tài khoản', tabBarIcon: () => <TabIcon emoji="👤" /> }}
       />
-      {/* Hidden screens — không hiển thị trong tab bar */}
-      <Tabs.Screen name="order/[id]" options={{ href: null }} />
-      <Tabs.Screen name="pickup/[id]" options={{ href: null }} />
-      <Tabs.Screen name="deliver/[id]" options={{ href: null }} />
+      {/* Hidden screens — không hiển thị trong tab bar, ẩn tab bar */}
+      <Tabs.Screen name="order/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="pickup/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="deliver/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
     </Tabs>
   );
 }

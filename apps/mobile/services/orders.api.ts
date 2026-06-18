@@ -16,4 +16,26 @@ export const ordersApi = {
 
   cancelOrder: (id: string, reason?: string) =>
     api.patch(`/orders/${id}/cancel`, { reason }).then((r) => r.data),
+
+  submitReview: (id: string, data: {
+    overallRating: number; goodsCareRating: number;
+    staffRating: number; timeRating: number; comment?: string;
+  }) => api.post(`/orders/${id}/review`, data).then((r) => r.data),
+
+  getReview: (id: string) => api.get(`/orders/${id}/review`).then((r) => r.data).catch(() => null),
+
+  submitComplaint: (id: string, data: {
+    reason: string; description: string; requestedAmount?: number;
+  }) => api.post(`/orders/${id}/complaint`, data).then((r) => r.data),
+
+  getComplaint: (id: string) => api.get(`/orders/${id}/complaint`).then((r) => r.data).catch(() => null),
+
+  resolveComplaint: (id: string, data: { verdict: 'FAULT' | 'NO_FAULT'; message: string }) =>
+    api.patch(`/orders/${id}/complaint/resolve`, data).then((r) => r.data),
+
+  submitBankInfo: (id: string, bankAccount: string) =>
+    api.patch(`/orders/${id}/complaint/bank-info`, { bankAccount }).then((r) => r.data),
+
+  confirmTransfer: (id: string) =>
+    api.patch(`/orders/${id}/complaint/confirm-transfer`).then((r) => r.data),
 };

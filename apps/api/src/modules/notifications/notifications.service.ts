@@ -67,13 +67,13 @@ export class NotificationsService {
 
   async notifyOrderUpdate(orderId: string, status: string, customerId: string) {
     const statusMessages: Record<string, { title: string; body: string }> = {
-      CONFIRMED:        { title: 'Đơn hàng đã được xác nhận', body: 'Nhà xe đã nhận đơn hàng của bạn' },
-      PICKING_UP:       { title: 'Đang lấy hàng', body: 'Tài xế đang đến lấy hàng của bạn' },
-      AT_STATION:       { title: 'Hàng đã lên xe', body: 'Hàng đã được đưa lên xe tại bến xuất phát' },
-      IN_TRANSIT:       { title: 'Xe đã xuất bến 🚌', body: 'Hàng của bạn đang trên đường đến đích' },
-      ARRIVED:          { title: 'Xe đã đến bến đích', body: 'Xe đã đến bến, chuẩn bị giao hàng' },
-      OUT_FOR_DELIVERY: { title: 'Đang giao đến nhà', body: 'Tài xế đang giao hàng đến địa chỉ của bạn' },
-      DELIVERED:        { title: '✅ Giao hàng thành công!', body: 'Đơn hàng đã được giao thành công' },
+      CONFIRMED:        { title: '✅ Đơn hàng đã được xác nhận', body: 'Nhà xe đã nhận đơn hàng của bạn' },
+      PICKING_UP:       { title: '🚗 Tài xế đang đến lấy hàng', body: 'Hãy chuẩn bị hàng tại vị trí đã đặt' },
+      AT_STATION:       { title: '📦 Hàng đã lên xe', body: 'Hàng đã được đưa lên xe, chuẩn bị xuất bến' },
+      IN_TRANSIT:       { title: '🚌 Xe đã xuất bến!', body: 'Hàng của bạn đang trên đường đến đích' },
+      ARRIVED:          { title: '🏁 Xe đã đến bến đích', body: 'Xe đã đến nơi, hãy đến bến để nhận hàng' },
+      OUT_FOR_DELIVERY: { title: '🏃 Đang giao đến bạn', body: 'Nhân viên đang giao hàng đến địa chỉ của bạn' },
+      DELIVERED:        { title: '🎉 Giao hàng thành công!', body: 'Đơn hàng đã được giao thành công. Cảm ơn bạn!' },
       CANCELLED:        { title: 'Đơn hàng đã hủy', body: 'Đơn hàng của bạn đã bị hủy' },
     };
 

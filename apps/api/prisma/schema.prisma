@@ -79,10 +79,12 @@ enum PaymentStatus {
 }
 
 enum ComplaintStatus {
-  PENDING
-  REVIEWING
-  RESOLVED_REFUND
-  RESOLVED_REJECTED
+  PENDING            // Chờ tài xế xem xét
+  REVIEWING          // Tài xế đang xem xét
+  AWAITING_BANK_INFO // Tài xế xác nhận lỗi, chờ khách cung cấp tài khoản ngân hàng
+  AWAITING_TRANSFER  // Khách đã gửi TK, chờ tài xế chuyển tiền
+  RESOLVED_REFUND    // Đã hoàn tiền
+  RESOLVED_REJECTED  // Không chịu trách nhiệm
 }
 
 enum DiscountType {
@@ -120,10 +122,11 @@ model Customer {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orders     Order[]
-  reviews    Review[]
-  complaints Complaint[]
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders          Order[]
+  reviews         Review[]
+  complaints      Complaint[]
+  privateVouchers Voucher[]   @relation("PrivateVouchers")
 
   @@map("customers")
 }
@@ -350,18 +353,22 @@ model OrderTrackingEvent {
 }
 
 model Complaint {
-  id              String          @id @default(cuid())
-  orderId         String          @unique
-  customerId      String
-  reason          String
-  description     String
-  requestedAmount Float?
-  customerPhotos  String[]
-  status          ComplaintStatus @default(PENDING)
-  resolution      String?
-  resolvedAt      DateTime?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                  String          @id @default(cuid())
+  orderId             String          @unique
+  customerId          String
+  reason              String
+  description         String
+  requestedAmount     Float?
+  customerPhotos      String[]
+  status              ComplaintStatus @default(PENDING)
+  driverVerdict       String?         // 'FAULT' | 'NO_FAULT'
+  resolution          String?         // Phản hồi / thông điệp từ tài xế
+  apologyMessage      String?         // Lời xin lỗi khi FAULT
+  apologyVoucherCode  String?         // Mã voucher 20% tạo riêng cho khách
+  customerBankAccount String?         // "TênNH - SốTK - TênCT" khách cung cấp
+  resolvedAt          DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   order    Order    @relation(fields: [orderId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
@@ -402,21 +409,23 @@ model Notification {
 }
 
 model Voucher {
-  id            String       @id @default(cuid())
-  code          String       @unique  // GIAM50K, NEWUSER20...
-  description   String?
-  discountType  DiscountType
-  discountValue Float        // 10 = 10% hoặc 50000đ cố định
-  minOrderValue Float        @default(0)
-  maxDiscount   Float?       // Giảm tối đa khi dùng loại %
-  maxUses       Int          @default(100)
-  usedCount     Int          @default(0)
-  isActive      Boolean      @default(true)
-  expiresAt     DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  code           String       @unique  // GIAM50K, NEWUSER20...
+  description    String?
+  discountType   DiscountType
+  discountValue  Float        // 10 = 10% hoặc 50000đ cố định
+  minOrderValue  Float        @default(0)
+  maxDiscount    Float?       // Giảm tối đa khi dùng loại %
+  maxUses        Int          @default(100)
+  usedCount      Int          @default(0)
+  isActive       Boolean      @default(true)
+  expiresAt      DateTime?
+  forCustomerId  String?      // Nếu set, chỉ khách này mới dùng được
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  orders Order[]
+  orders      Order[]
+  forCustomer Customer? @relation("PrivateVouchers", fields: [forCustomerId], references: [id])
 
   @@map("vouchers")
 }

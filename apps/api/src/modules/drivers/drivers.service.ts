@@ -28,17 +28,36 @@ export class DriversService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const [pending, today_count, delivered] = await Promise.all([
-      this.prisma.order.count({ where: { status: OrderStatus.PENDING, tripId: null } }),
+    const pendingWhere = {
+      status: OrderStatus.PENDING,
+      tripId: null,
+      OR: [
+        { assignedDriverId: driver.id },
+        {
+          assignedDriverId: null,
+          OR: [{ assignedCompanyName: null }, { assignedCompanyName: driver.companyName }],
+        },
+      ],
+    } as any;
+
+    const [pending, confirmed, pickingUp, delivering, today_count, delivered] = await Promise.all([
+      this.prisma.order.count({ where: pendingWhere }),
+      this.prisma.order.count({ where: { trip: { driverId: driver.id }, status: OrderStatus.CONFIRMED } }),
+      this.prisma.order.count({ where: { trip: { driverId: driver.id }, status: OrderStatus.PICKING_UP } }),
       this.prisma.order.count({
-        where: { trip: { driverId: driver.id }, createdAt: { gte: today } },
+        where: {
+          trip: { driverId: driver.id },
+          status: { in: [OrderStatus.AT_STATION, OrderStatus.IN_TRANSIT, OrderStatus.ARRIVED, OrderStatus.OUT_FOR_DELIVERY] },
+        },
       }),
-      this.prisma.order.count({
-        where: { trip: { driverId: driver.id }, status: OrderStatus.DELIVERED },
-      }),
+      this.prisma.order.count({ where: { trip: { driverId: driver.id }, createdAt: { gte: today } } }),
+      this.prisma.order.count({ where: { trip: { driverId: driver.id }, status: OrderStatus.DELIVERED } }),
     ]);
 
-    return { pending, today: today_count, delivered };
+    return {
+      pending, today: today_count, delivered,
+      tabCounts: { PENDING: pending, CONFIRMED: confirmed, PICKING_UP: pickingUp, DELIVERING: delivering },
+    };
   }
 
   // ── Orders ────────────────────────────────────────────────────────────────
@@ -64,6 +83,17 @@ export class DriversService {
         },
         include: { customer: { include: { user: { select: { fullName: true, phone: true } } } } },
         orderBy: { createdAt: 'asc' },
+      });
+    }
+
+    if (status === 'DELIVERING') {
+      return this.prisma.order.findMany({
+        where: {
+          trip: { driverId: driver.id },
+          status: { in: [OrderStatus.AT_STATION, OrderStatus.IN_TRANSIT, OrderStatus.ARRIVED, OrderStatus.OUT_FOR_DELIVERY] },
+        },
+        include: { customer: { include: { user: { select: { fullName: true, phone: true } } } } },
+        orderBy: { createdAt: 'desc' },
       });
     }
 
@@ -124,15 +154,18 @@ export class DriversService {
         where: { fromCity: order.fromCity, toCity: order.toCity, isActive: true },
       });
 
-      const now = new Date();
+      const departureTime = this.parseDepartureTime(driver.todayDepartureTime);
+      const travelHours = this.estimateTravelHours(order.fromCity, order.toCity);
+      const arrivalEta = new Date(departureTime.getTime() + travelHours * 60 * 60 * 1000);
+
       trip = await this.prisma.trip.create({
         data: {
           routeId: route?.id ?? (await this.ensureRoute(order.fromCity, order.toCity)),
           driverId: driver.id,
-          departureTime: new Date(now.getTime() + 2 * 60 * 60 * 1000), // 2h from now
-          arrivalEta: new Date(now.getTime() + 26 * 60 * 60 * 1000),   // +24h travel
+          departureTime,
+          arrivalEta,
           capacityKg: 1000,
-          pricePerKg: 15000,
+          pricePerKg: driver.todayPricePerKg ?? 15000,
           status: TripStatus.BOARDING,
         },
       });
@@ -160,70 +193,114 @@ export class DriversService {
     return { message: 'Order rejected', reason };
   }
 
-  // ── Pickup (photos) ───────────────────────────────────────────────────────
+  // ── Pickup flow ───────────────────────────────────────────────────────────
+
+  async startPickup(userId: string, orderId: string) {
+    await this.getDriver(userId);
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OrderStatus.CONFIRMED) {
+      throw new BadRequestException('Đơn hàng chưa được xác nhận');
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.PICKING_UP },
+      }),
+      this.prisma.orderTrackingEvent.create({
+        data: { orderId, status: OrderStatus.PICKING_UP, note: 'Tài xế đang đến lấy hàng' },
+      }),
+    ]);
+
+    this.notifications.notifyOrderUpdate(orderId, 'PICKING_UP', order.customerId).catch(() => {});
+    return updated;
+  }
 
   async confirmPickup(userId: string, orderId: string, photos: string[]) {
     await this.getDriver(userId);
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OrderStatus.PICKING_UP) {
+      throw new BadRequestException('Đơn hàng chưa ở trạng thái đang lấy');
+    }
 
-    // Determine next status based on serviceType
-    const nextStatus = ['DOOR_TO_STATION', 'DOOR_TO_DOOR'].includes(order.serviceType)
-      ? OrderStatus.PICKING_UP
-      : OrderStatus.AT_STATION;
-
-    const result = await this.prisma.$transaction([
+    const [updated] = await this.prisma.$transaction([
       this.prisma.order.update({
         where: { id: orderId },
-        data: {
-          status: nextStatus,
-          pickupPhotos: photos,
-          pickedUpAt: new Date(),
-        },
+        data: { status: OrderStatus.AT_STATION, pickupPhotos: photos, pickedUpAt: new Date() },
       }),
       this.prisma.orderTrackingEvent.create({
-        data: { orderId, status: nextStatus, photoUrl: photos[0] },
+        data: { orderId, status: OrderStatus.AT_STATION, photoUrl: photos[0], note: 'Hàng đã lên xe' },
       }),
     ]);
 
-    this.notifications.notifyOrderUpdate(orderId, nextStatus, order.customerId).catch(() => {});
-
-    return result;
+    this.notifications.notifyOrderUpdate(orderId, 'AT_STATION', order.customerId).catch(() => {});
+    return updated;
   }
 
-  // ── Delivery ──────────────────────────────────────────────────────────────
+  // ── Delivery flow ─────────────────────────────────────────────────────────
+
+  async startDelivery(userId: string, orderId: string) {
+    await this.getDriver(userId);
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status !== OrderStatus.ARRIVED) {
+      throw new BadRequestException('Đơn hàng chưa đến bến đích');
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.OUT_FOR_DELIVERY },
+      }),
+      this.prisma.orderTrackingEvent.create({
+        data: { orderId, status: OrderStatus.OUT_FOR_DELIVERY, note: 'Đang giao đến người nhận' },
+      }),
+    ]);
+
+    this.notifications.notifyOrderUpdate(orderId, 'OUT_FOR_DELIVERY', order.customerId).catch(() => {});
+    return updated;
+  }
 
   async confirmDelivery(
     userId: string,
     orderId: string,
-    data: { photos: string[]; signature: string; codCollected?: number },
+    data: { photos: string[]; receiverName: string; amountCollected?: number },
   ) {
-    await this.getDriver(userId);
+    const driver = await this.getDriver(userId);
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
-
-    if (!['ARRIVED', 'OUT_FOR_DELIVERY'].includes(order.status)) {
-      throw new BadRequestException('Order is not ready for delivery');
+    if (order.status !== OrderStatus.OUT_FOR_DELIVERY) {
+      throw new BadRequestException('Đơn hàng chưa ở trạng thái đang giao');
     }
 
-    const result = await this.prisma.$transaction([
+    await this.prisma.$transaction([
       this.prisma.order.update({
         where: { id: orderId },
         data: {
           status: OrderStatus.DELIVERED,
           deliveryPhotos: data.photos,
-          receiverSignature: data.signature,
+          receiverSignature: data.receiverName,
           deliveredAt: new Date(),
         },
       }),
       this.prisma.orderTrackingEvent.create({
-        data: { orderId, status: OrderStatus.DELIVERED, photoUrl: data.photos[0], note: `Giao thành công. Chữ ký: ${data.signature}` },
+        data: {
+          orderId,
+          status: OrderStatus.DELIVERED,
+          photoUrl: data.photos[0],
+          note: `Đã giao cho ${data.receiverName}${data.amountCollected ? `. Thu: ${data.amountCollected.toLocaleString('vi-VN')}đ` : ''}`,
+        },
+      }),
+      this.prisma.driver.update({
+        where: { id: driver.id },
+        data: { totalTrips: { increment: 1 } },
       }),
     ]);
 
     this.notifications.notifyOrderUpdate(orderId, 'DELIVERED', order.customerId).catch(() => {});
-
-    return result;
+    return { success: true, orderId };
   }
 
   // ── Trip ──────────────────────────────────────────────────────────────────
@@ -357,7 +434,12 @@ export class DriversService {
     const driver = await this.getDriver(userId);
     return this.prisma.complaint.findMany({
       where: { order: { trip: { driverId: driver.id } } },
-      include: { order: { select: { trackingCode: true } } },
+      include: {
+        order: {
+          select: { id: true, trackingCode: true, pickupPhotos: true, deliveryPhotos: true, total: true },
+        },
+        customer: { include: { user: { select: { fullName: true, phone: true } } } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -385,17 +467,63 @@ export class DriversService {
   }
 
   private async ensureRoute(fromCity: string, toCity: string): Promise<string> {
+    const hours = this.estimateTravelHours(fromCity, toCity);
     const route = await this.prisma.route.create({
       data: {
         fromCity,
         fromStation: `Bến xe ${fromCity}`,
         toCity,
         toStation: `Bến xe ${toCity}`,
-        distanceKm: 1700,
-        durationHours: 24,
+        distanceKm: Math.round(hours * 60),
+        durationHours: hours,
         pricePerKg: 15000,
       },
     });
     return route.id;
+  }
+
+  private parseDepartureTime(todayDepartureTime: string | null): Date {
+    const now = new Date();
+    if (!todayDepartureTime) return now;
+    const [h, m] = todayDepartureTime.split(':').map(Number);
+    const d = new Date(now);
+    d.setHours(h ?? 0, m ?? 0, 0, 0);
+    if (d < now) d.setDate(d.getDate() + 1); // nếu đã qua giờ xuất bến, dùng ngày mai
+    return d;
+  }
+
+  // Thời gian di chuyển ước tính theo Google Maps (giờ) cho các tuyến phổ biến VN
+  private estimateTravelHours(fromCity: string, toCity: string): number {
+    const key = [fromCity, toCity].sort().join('|');
+    const HOURS: Record<string, number> = {
+      'Hà Nội|Nghệ An': 5,
+      'Hà Nội|Vinh': 5,
+      'Hà Nội|Thanh Hóa': 3,
+      'Hà Nội|Hải Phòng': 2,
+      'Hà Nội|Nam Định': 2,
+      'Hà Nội|Ninh Bình': 2,
+      'Hà Nội|Quảng Bình': 8,
+      'Hà Nội|Quảng Trị': 9,
+      'Hà Nội|Huế': 11,
+      'Hà Nội|Đà Nẵng': 13,
+      'Hà Nội|Quảng Ngãi': 16,
+      'Hà Nội|Quy Nhơn': 18,
+      'Hà Nội|Đắk Lắk': 22,
+      'Hà Nội|Nha Trang': 24,
+      'Hà Nội|Đà Lạt': 26,
+      'Hà Nội|TP. Hồ Chí Minh': 28,
+      'Hà Nội|Cần Thơ': 32,
+      'Đà Nẵng|TP. Hồ Chí Minh': 16,
+      'Đà Nẵng|Quy Nhơn': 5,
+      'Đà Nẵng|Huế': 3,
+      'Đà Nẵng|Nha Trang': 10,
+      'TP. Hồ Chí Minh|Cần Thơ': 3,
+      'TP. Hồ Chí Minh|Nha Trang': 7,
+      'TP. Hồ Chí Minh|Đà Lạt': 7,
+      'TP. Hồ Chí Minh|Vũng Tàu': 2,
+      'Nghệ An|Huế': 6,
+      'Nghệ An|Đà Nẵng': 8,
+    };
+    return HOURS[key] ?? 10;
   }
 }

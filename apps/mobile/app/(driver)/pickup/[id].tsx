@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { driverApi } from '@services/driver.api';
+import { uploadPhotos } from '@services/upload';
 import { Button } from '@components/ui/Button';
 import { Colors } from '@constants/Colors';
 import { Typography, Layout } from '@constants/Layout';
@@ -16,22 +17,36 @@ export default function PickupConfirmScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
   const [photos, setPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const confirm = useMutation({
-    mutationFn: () => driverApi.confirmPickup(id, photos),
+    mutationFn: async () => {
+      setUploading(true);
+      try {
+        const urls = await uploadPhotos(photos);
+        return driverApi.confirmPickup(id, urls);
+      } finally {
+        setUploading(false);
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['driver-orders'] });
-      Alert.alert('Thành công', 'Đã xác nhận lấy hàng', [
+      Alert.alert('✅ Thành công', 'Đã xác nhận lấy hàng và lưu ảnh', [
         { text: 'OK', onPress: () => router.replace('/(driver)') },
       ]);
     },
+    onError: () => Alert.alert('Lỗi', 'Không thể upload ảnh. Kiểm tra kết nối mạng và thử lại.'),
   });
 
   const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Cần quyền camera', 'Vui lòng cho phép ứng dụng truy cập camera trong Cài đặt.');
+      return;
+    }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.8,
-      allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
       setPhotos((prev) => [...prev, result.assets[0].uri]);
@@ -110,12 +125,12 @@ export default function PickupConfirmScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
         <Button
-          label={`✓ Xác nhận đã lấy hàng (${photos.length}/${REQUIRED_PHOTOS} ảnh)`}
+          label={uploading ? '☁️ Đang upload ảnh...' : photos.length >= REQUIRED_PHOTOS ? '✅ Xác nhận lấy hàng' : `Cần thêm ${REQUIRED_PHOTOS - photos.length} ảnh nữa (${photos.length}/${REQUIRED_PHOTOS})`}
           onPress={onConfirm}
           variant={photos.length >= REQUIRED_PHOTOS ? 'success' : 'secondary'}
-          loading={confirm.isPending}
+          loading={confirm.isPending || uploading}
           style={{ flex: 1 }}
         />
       </View>
@@ -149,5 +164,5 @@ const styles = StyleSheet.create({
   noteTitle: { ...Typography.bodyBold, color: Colors.warning, marginBottom: 8 },
   noteItem: { ...Typography.small, color: Colors.secondary, marginBottom: 4 },
 
-  bottomBar: { backgroundColor: Colors.white, padding: Layout.padding, borderTopWidth: 1, borderTopColor: Colors.border },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: Colors.white, padding: Layout.padding, borderTopWidth: 1, borderTopColor: Colors.border },
 });

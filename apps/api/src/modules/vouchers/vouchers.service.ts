@@ -72,7 +72,7 @@ export class VouchersService {
     );
   }
 
-  async validate(code: string, orderTotal: number) {
+  async validate(code: string, orderTotal: number, customerId?: string) {
     const now = new Date();
     const voucher = await this.prisma.voucher.findUnique({
       where: { code: code.toUpperCase().trim() },
@@ -84,6 +84,9 @@ export class VouchersService {
     if (voucher.usedCount >= voucher.maxUses) throw new BadRequestException('Mã voucher đã hết lượt sử dụng');
     if (orderTotal < voucher.minOrderValue) {
       throw new BadRequestException(`Đơn hàng tối thiểu ${voucher.minOrderValue.toLocaleString('vi-VN')}đ`);
+    }
+    if (voucher.forCustomerId && voucher.forCustomerId !== customerId) {
+      throw new BadRequestException('Mã voucher này không dành cho bạn');
     }
 
     const discountAmount = this.calculateDiscount(voucher, orderTotal);

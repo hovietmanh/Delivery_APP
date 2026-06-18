@@ -269,10 +269,40 @@ export default function OrderDetailScreen() {
         </View>
 
         {/* ── Actions ── */}
-        {order.status === 'DELIVERED' && (
+        {(order.status === 'DELIVERED' || order.status === 'DISPUTED') && (
           <View style={styles.actionsWrap}>
-            <Button label="⭐ Đánh giá nhà xe" onPress={() => {}} variant="outline" style={{ marginBottom: 8 }} />
-            <Button label="⚠️ Khiếu nại đơn hàng" onPress={() => {}} variant="danger" />
+            {order.status === 'DELIVERED' && (
+              order.review ? (
+                <View style={styles.reviewedBadge}>
+                  <Text style={styles.reviewedText}>✅ Đã đánh giá {'⭐'.repeat(order.review.overallRating ?? 5)}</Text>
+                </View>
+              ) : (
+                <Button
+                  label="⭐ Đánh giá nhà xe"
+                  onPress={() => router.push(`/(customer)/orders/review/${id}` as any)}
+                  variant="outline"
+                  style={{ marginBottom: 8 }}
+                />
+              )
+            )}
+            {order.complaint ? (
+              <TouchableOpacity
+                style={styles.complaintStatusRow}
+                onPress={() => router.push(`/(customer)/orders/complaint/${id}` as any)}
+              >
+                <Text style={styles.complaintStatusIcon}>⚠️</Text>
+                <View>
+                  <Text style={styles.complaintStatusLabel}>Khiếu nại đang xử lý</Text>
+                  <Text style={styles.complaintStatusSub}>Nhấn để xem chi tiết →</Text>
+                </View>
+              </TouchableOpacity>
+            ) : order.status === 'DELIVERED' ? (
+              <Button
+                label="⚠️ Khiếu nại đơn hàng"
+                onPress={() => router.push(`/(customer)/orders/complaint/${id}` as any)}
+                variant="danger"
+              />
+            ) : null}
           </View>
         )}
         {['PENDING', 'CONFIRMED'].includes(order.status) && (
@@ -409,7 +439,13 @@ const styles = StyleSheet.create({
   infoLabel: { ...Typography.small, color: Colors.secondary, width: 90 },
   infoValue: { ...Typography.bodyBold, color: Colors.dark, flex: 1, textAlign: 'right' },
 
-  actionsWrap: { paddingHorizontal: Layout.padding, marginTop: 12 },
+  actionsWrap: { paddingHorizontal: Layout.padding, marginTop: 12, marginBottom: 8 },
+  reviewedBadge: { backgroundColor: Colors.successBg, borderRadius: Layout.radius, padding: 12, alignItems: 'center', marginBottom: 8 },
+  reviewedText: { ...Typography.bodyBold, color: Colors.success },
+  complaintStatusRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.warningBg, borderRadius: Layout.radius, padding: 14, gap: 12 },
+  complaintStatusIcon: { fontSize: 24 },
+  complaintStatusLabel: { ...Typography.bodyBold, color: Colors.warning },
+  complaintStatusSub: { ...Typography.small, color: Colors.secondary, marginTop: 2 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },

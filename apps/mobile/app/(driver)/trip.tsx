@@ -8,10 +8,37 @@ import { Colors } from '@constants/Colors';
 import { Typography, Layout } from '@constants/Layout';
 
 const CHECKPOINTS = [
-  { key: 'DEPARTED', label: 'Đã xuất bến', icon: '🚌', status: 'AT_STATION' },
-  { key: 'MIDPOINT', label: 'Điểm dừng giữa đường', icon: '⛽', status: 'IN_TRANSIT' },
-  { key: 'ARRIVED_STATION', label: 'Đến bến đích', icon: '🏁', status: 'ARRIVED' },
+  {
+    key: 'DEPARTED',
+    label: 'Bắt đầu di chuyển',
+    desc: 'Xe xuất bến — thông báo khách hàng hàng đang trên đường',
+    icon: '🚌',
+    confirmMsg: 'Xác nhận xe đã xuất bến? Tất cả đơn hàng sẽ chuyển sang trạng thái "Đang vận chuyển" và khách hàng sẽ được thông báo.',
+  },
+  {
+    key: 'ARRIVED_STATION',
+    label: 'Xe đã đến bến đích',
+    desc: 'Xe đến nơi — thông báo khách đến nhận hàng',
+    icon: '🏁',
+    confirmMsg: 'Xác nhận xe đã đến bến đích? Khách hàng sẽ nhận được thông báo đến lấy hàng.',
+  },
 ];
+
+function fmtTime(isoOrHHMM: string | null | undefined): string {
+  if (!isoOrHHMM) return '--:--';
+  if (isoOrHHMM.includes('T') || isoOrHHMM.includes('Z')) {
+    const d = new Date(isoOrHHMM);
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  return isoOrHHMM;
+}
+
+// Map trip.status → chỉ số checkpoint tiếp theo cần bấm
+const STATUS_TO_IDX: Record<string, number> = {
+  BOARDING: 0,
+  IN_TRANSIT: 1,
+  ARRIVED: 2,
+};
 
 export default function TripScreen() {
   const insets = useSafeAreaInsets();
@@ -20,7 +47,8 @@ export default function TripScreen() {
   const { data: trip, isLoading } = useQuery({
     queryKey: ['active-trip'],
     queryFn: driverApi.getActiveTrip,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
+    staleTime: 0,
   });
 
   const updateCheckpoint = useMutation({
@@ -29,15 +57,11 @@ export default function TripScreen() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['active-trip'] }),
   });
 
-  const onCheckpoint = (checkpoint: { key: string; label: string }) => {
-    Alert.alert(
-      'Cập nhật hành trình',
-      `Xác nhận: "${checkpoint.label}"?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xác nhận', onPress: () => updateCheckpoint.mutate({ checkpoint: checkpoint.key }) },
-      ]
-    );
+  const onCheckpoint = (checkpoint: { key: string; label: string; confirmMsg: string }) => {
+    Alert.alert('Cập nhật hành trình', checkpoint.confirmMsg, [
+      { text: 'Hủy', style: 'cancel' },
+      { text: 'Xác nhận', onPress: () => updateCheckpoint.mutate({ checkpoint: checkpoint.key }) },
+    ]);
   };
 
   if (isLoading) {
@@ -59,7 +83,7 @@ export default function TripScreen() {
     );
   }
 
-  const currentIdx = CHECKPOINTS.findIndex((c) => c.status === trip.currentStatus);
+  const currentIdx = STATUS_TO_IDX[trip.status] ?? 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -78,29 +102,29 @@ export default function TripScreen() {
           <View style={styles.routeRow}>
             <View>
               <Text style={styles.routeLabel}>Xuất phát</Text>
-              <Text style={styles.routeCity}>{trip.fromCity}</Text>
+              <Text style={styles.routeCity}>{trip.route?.fromCity ?? trip.fromCity}</Text>
             </View>
             <View style={styles.progressTrack}>
-              <View style={styles.progressFill} />
+              <View style={[styles.progressFill, { width: `${trip.progressPercent ?? 5}%` as any }]} />
               <Text style={styles.busEmoji}>🚌</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.routeLabel}>Điểm đến</Text>
-              <Text style={styles.routeCity}>{trip.toCity}</Text>
+              <Text style={styles.routeCity}>{trip.route?.toCity ?? trip.toCity}</Text>
             </View>
           </View>
 
           <View style={styles.tripStatsRow}>
             <View style={styles.tripStat}>
-              <Text style={styles.tripStatValue}>{trip.ordersCount ?? 0}</Text>
+              <Text style={styles.tripStatValue}>{trip.orders?.length ?? 0}</Text>
               <Text style={styles.tripStatLabel}>Đơn hàng</Text>
             </View>
             <View style={styles.tripStat}>
-              <Text style={styles.tripStatValue}>{trip.departureTime}</Text>
+              <Text style={styles.tripStatValue}>{fmtTime(trip.departureTime)}</Text>
               <Text style={styles.tripStatLabel}>Xuất bến</Text>
             </View>
             <View style={styles.tripStat}>
-              <Text style={styles.tripStatValue}>{trip.estimatedArrival}</Text>
+              <Text style={styles.tripStatValue}>{fmtTime(trip.arrivalEta)}</Text>
               <Text style={styles.tripStatLabel}>Dự kiến đến</Text>
             </View>
           </View>
@@ -111,23 +135,27 @@ export default function TripScreen() {
           <Text style={styles.cardTitle}>📍 Cập nhật hành trình</Text>
           {CHECKPOINTS.map((cp, i) => {
             const isDone = i < currentIdx;
-            const isActive = i === currentIdx;
+            const isNext = i === currentIdx;
             return (
-              <TouchableOpacity
-                key={cp.key}
-                style={[styles.checkpointRow, isDone && styles.checkpointDone]}
-                onPress={() => !isDone && onCheckpoint(cp)}
-                disabled={isDone}
-              >
-                <View style={[styles.checkpointIcon, isDone && styles.checkpointIconDone, isActive && styles.checkpointIconActive]}>
+              <View key={cp.key} style={[styles.checkpointRow, isDone && styles.checkpointDone]}>
+                <View style={[styles.checkpointIcon, isDone && styles.checkpointIconDone, isNext && styles.checkpointIconActive]}>
                   <Text style={{ fontSize: 18 }}>{isDone ? '✓' : cp.icon}</Text>
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={[styles.checkpointLabel, isDone && { color: Colors.secondary }]}>{cp.label}</Text>
-                  {isDone && <Text style={styles.checkpointTime}>Đã cập nhật</Text>}
-                  {isActive && <Text style={styles.checkpointActive}>Nhấn để cập nhật</Text>}
+                  <Text style={styles.checkpointDesc}>{cp.desc}</Text>
+                  {isDone && <Text style={styles.checkpointTime}>✓ Đã cập nhật</Text>}
                 </View>
-              </TouchableOpacity>
+                {isNext && (
+                  <TouchableOpacity
+                    style={styles.checkpointBtn}
+                    onPress={() => onCheckpoint(cp)}
+                    disabled={updateCheckpoint.isPending}
+                  >
+                    <Text style={styles.checkpointBtnText}>Cập nhật</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             );
           })}
         </View>
@@ -144,15 +172,18 @@ export default function TripScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.orderCode}>{order.trackingCode}</Text>
                 <Text style={styles.orderReceiver}>{order.receiverName} · {order.receiverPhone}</Text>
+                <Text style={styles.orderAddr}>📍 {order.receiverAddress ?? `Bến xe ${order.toCity}`}</Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
+              <View style={{ alignItems: 'flex-end', gap: 6 }}>
                 <Badge status={order.status} />
-                {order.status === 'ARRIVED' && (
+                {(order.status === 'ARRIVED' || order.status === 'OUT_FOR_DELIVERY') && (
                   <TouchableOpacity
-                    style={styles.deliverBtn}
+                    style={[styles.deliverBtn, order.status === 'OUT_FOR_DELIVERY' && styles.deliveringBtn]}
                     onPress={() => router.push(`/(driver)/deliver/${order.id}` as any)}
                   >
-                    <Text style={styles.deliverBtnText}>Giao hàng →</Text>
+                    <Text style={styles.deliverBtnText}>
+                      {order.status === 'ARRIVED' ? '📦 Giao cho khách →' : '📸 Hoàn tất giao →'}
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -192,13 +223,17 @@ const styles = StyleSheet.create({
   checkpointIconDone: { backgroundColor: Colors.successBg },
   checkpointIconActive: { backgroundColor: Colors.infoBg, borderWidth: 2, borderColor: Colors.blue },
   checkpointLabel: { ...Typography.bodyBold, color: Colors.dark },
-  checkpointTime: { ...Typography.caption, color: Colors.secondary, marginTop: 2 },
-  checkpointActive: { ...Typography.caption, color: Colors.blue, marginTop: 2 },
+  checkpointDesc: { ...Typography.caption, color: Colors.secondary, marginTop: 2 },
+  checkpointTime: { ...Typography.caption, color: Colors.success, marginTop: 2, fontWeight: '700' },
+  checkpointBtn: { backgroundColor: Colors.blue, paddingHorizontal: 12, paddingVertical: 8, borderRadius: Layout.radiusSm },
+  checkpointBtnText: { ...Typography.smallBold, color: Colors.white },
 
-  orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.bg },
+  orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.bg },
   orderCode: { ...Typography.bodyBold, color: Colors.navy },
   orderReceiver: { ...Typography.small, color: Colors.secondary, marginTop: 2 },
-  deliverBtn: { marginTop: 4, backgroundColor: Colors.successBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Layout.radiusSm },
+  orderAddr: { ...Typography.caption, color: Colors.placeholder, marginTop: 2 },
+  deliverBtn: { backgroundColor: Colors.successBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Layout.radiusSm },
+  deliveringBtn: { backgroundColor: Colors.infoBg },
   deliverBtnText: { ...Typography.smallBold, color: Colors.success },
 
   noTrip: { flex: 1, alignItems: 'center', justifyContent: 'center' },

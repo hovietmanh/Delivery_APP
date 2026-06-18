@@ -33,11 +33,22 @@ export default function DriverOrderDetailScreen() {
   const accept = useMutation({
     mutationFn: () => driverApi.acceptOrder(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['driver-orders'] }); router.back(); },
+    onError: (e: any) => Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể nhận đơn'),
   });
 
   const reject = useMutation({
     mutationFn: (reason: string) => driverApi.rejectOrder(id, reason),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['driver-orders'] }); router.back(); },
+  });
+
+  const startPickup = useMutation({
+    mutationFn: () => driverApi.startPickup(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['driver-orders', 'driver-order'] });
+      Alert.alert('✅ Đã thông báo', 'Khách hàng được thông báo chuẩn bị hàng. Hãy đến lấy hàng!');
+      router.back();
+    },
+    onError: (e: any) => Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể cập nhật'),
   });
 
   const onAccept = () => {
@@ -56,13 +67,26 @@ export default function DriverOrderDetailScreen() {
     ]);
   };
 
+  const onStartPickup = () => {
+    Alert.alert(
+      '🚗 Bắt đầu đi lấy hàng?',
+      `Khách hàng sẽ nhận thông báo chuẩn bị hàng tại:\n${order?.senderAddress ?? `Bến xe ${order?.fromCity}`}`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xác nhận', onPress: () => startPickup.mutate() },
+      ]
+    );
+  };
+
   if (isLoading || !order) {
     return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Text>Đang tải...</Text></View>;
   }
 
   const isPending = order.status === 'PENDING';
   const isConfirmed = order.status === 'CONFIRMED';
-  const canPickup = isConfirmed;
+  const isPickingUp = order.status === 'PICKING_UP';
+  const isArrived = order.status === 'ARRIVED';
+  const isOutForDelivery = order.status === 'OUT_FOR_DELIVERY';
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -163,11 +187,43 @@ export default function DriverOrderDetailScreen() {
         </View>
       )}
 
-      {canPickup && (
+      {isConfirmed && (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
           <Button
-            label="📷 Xác nhận lấy hàng"
+            label="🚗 Bắt đầu đi lấy hàng"
+            onPress={onStartPickup}
+            style={{ flex: 1, backgroundColor: Colors.warning }}
+            loading={startPickup.isPending}
+          />
+        </View>
+      )}
+
+      {isPickingUp && (
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+          <Button
+            label="📸 Chụp ảnh xác nhận lấy hàng"
             onPress={() => router.push(`/(driver)/pickup/${id}` as any)}
+            style={{ flex: 1 }}
+          />
+        </View>
+      )}
+
+      {isArrived && (
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+          <Button
+            label="📦 Bắt đầu giao cho người nhận"
+            onPress={() => router.push(`/(driver)/deliver/${id}` as any)}
+            variant="success"
+            style={{ flex: 1 }}
+          />
+        </View>
+      )}
+
+      {isOutForDelivery && (
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
+          <Button
+            label="📸 Hoàn tất giao hàng (chụp ảnh)"
+            onPress={() => router.push(`/(driver)/deliver/${id}` as any)}
             style={{ flex: 1 }}
           />
         </View>
