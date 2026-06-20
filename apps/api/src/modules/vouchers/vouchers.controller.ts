@@ -1,9 +1,10 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Body, Param, Query, UseGuards, HttpCode, HttpStatus,
+  Body, Param, Query, UseGuards, HttpCode, HttpStatus, Request,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { VouchersService } from './vouchers.service';
+import { PrismaService } from '../../config/prisma.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -12,7 +13,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller({ path: 'vouchers', version: '1' })
 export class VouchersController {
-  constructor(private readonly vouchersService: VouchersService) {}
+  constructor(
+    private readonly vouchersService: VouchersService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   // ── Admin ────────────────────────────────────────────────────────────────
 
@@ -40,12 +44,14 @@ export class VouchersController {
   // ── Customer ──────────────────────────────────────────────────────────────
 
   @Get()
-  findActive() {
-    return this.vouchersService.findActiveList();
+  async findActive(@Request() req: any) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId: req.user.id } });
+    return this.vouchersService.findActiveList(customer?.id);
   }
 
   @Get('validate')
-  validateCode(@Query('code') code: string, @Query('total') total: string) {
-    return this.vouchersService.validate(code, Number(total));
+  async validateCode(@Query('code') code: string, @Query('total') total: string, @Request() req: any) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId: req.user.id } });
+    return this.vouchersService.validate(code, Number(total), customer?.id);
   }
 }

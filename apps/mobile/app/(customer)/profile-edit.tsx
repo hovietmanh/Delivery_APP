@@ -78,7 +78,7 @@ export default function ProfileEditScreen() {
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/(customer)")} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thông tin tài khoản</Text>

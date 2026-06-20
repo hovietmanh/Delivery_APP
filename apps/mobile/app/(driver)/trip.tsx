@@ -53,6 +53,40 @@ export default function TripScreen() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['active-trip'] }),
   });
 
+  const completeTrip = useMutation({
+    mutationFn: () => driverApi.completeTrip(trip?.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['active-trip'] });
+      qc.invalidateQueries({ queryKey: ['driver-stats'] });
+      Alert.alert('🎉 Hoàn tất chuyến xe!', 'Chuyến xe đã được ghi nhận. Xe sẵn sàng cho chuyến tiếp theo.', [
+        { text: 'OK', onPress: () => router.replace('/(driver)/' as any) },
+      ]);
+    },
+    onError: (e: any) => Alert.alert('Không thể hoàn tất', e?.response?.data?.message ?? 'Vui lòng thử lại'),
+  });
+
+  const onCompleteTrip = () => {
+    Alert.alert(
+      '✅ Hoàn tất chuyến xe',
+      'Xác nhận tất cả hàng đã được giao và xe sẵn sàng cho chuyến mới?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Hoàn tất', style: 'default', onPress: () => completeTrip.mutate() },
+      ],
+    );
+  };
+
+  const BLOCK_STATUSES = ['PENDING', 'CONFIRMED', 'PICKING_UP'];
+  const STATUS_LABEL: Record<string, string> = {
+    PENDING: 'Chờ duyệt',
+    CONFIRMED: 'Đã nhận, chưa lấy',
+    PICKING_UP: 'Đang lấy hàng',
+  };
+
+  const blockedOrders = (trip?.orders ?? []).filter((o: any) =>
+    BLOCK_STATUSES.includes(o.status)
+  );
+
   const onCheckpoint = (cp: typeof CHECKPOINTS[0]) => {
     Alert.alert('Cập nhật hành trình', cp.confirmMsg, [
       { text: 'Hủy', style: 'cancel' },
@@ -83,8 +117,8 @@ export default function TripScreen() {
           <View style={styles.emptyIconWrap}>
             <Ionicons name="map-outline" size={44} color={Colors.blueLight} />
           </View>
-          <Text style={styles.noTripText}>Không có hành trình đang diễn ra</Text>
-          <Text style={styles.noTripSub}>Hành trình sẽ xuất hiện sau khi bạn xác nhận lấy hàng</Text>
+          <Text style={styles.noTripText}>Chưa có hành trình</Text>
+          <Text style={styles.noTripSub}>Cập nhật tuyến hôm nay ở trang chủ để bắt đầu chuyến mới</Text>
         </View>
       </View>
     );
@@ -153,30 +187,76 @@ export default function TripScreen() {
           {CHECKPOINTS.map((cp, i) => {
             const isDone = i < currentIdx;
             const isNext = i === currentIdx;
+            const isDeparted = cp.key === 'DEPARTED';
+            const isBlocked = isNext && isDeparted && blockedOrders.length > 0;
             return (
-              <View key={cp.key} style={[styles.checkpointRow, i < CHECKPOINTS.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.bg }]}>
-                <View style={[styles.cpIcon, isDone && styles.cpIconDone, isNext && styles.cpIconActive]}>
-                  <Ionicons
-                    name={isDone ? 'checkmark' : cp.icon}
-                    size={isDone ? 16 : 18}
-                    color={isDone || isNext ? Colors.white : Colors.placeholder}
-                  />
+              <View key={cp.key}>
+                <View style={[styles.checkpointRow, i < CHECKPOINTS.length - 1 && !isBlocked && { borderBottomWidth: 1, borderBottomColor: Colors.bg }]}>
+                  <View style={[styles.cpIcon, isDone && styles.cpIconDone, isNext && !isBlocked && styles.cpIconActive, isBlocked && styles.cpIconBlocked]}>
+                    <Ionicons
+                      name={isDone ? 'checkmark' : isBlocked ? 'lock-closed' : cp.icon}
+                      size={isDone ? 16 : 18}
+                      color={isDone || (isNext && !isBlocked) ? Colors.white : isBlocked ? Colors.white : Colors.placeholder}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.cpLabel, isDone && { color: Colors.secondary }]}>{cp.label}</Text>
+                    <Text style={styles.cpDesc}>{cp.desc}</Text>
+                    {isDone && <Text style={styles.cpDone}>✓ Đã hoàn thành</Text>}
+                  </View>
+                  {isNext && (
+                    <TouchableOpacity
+                      style={[styles.cpBtn, isBlocked && styles.cpBtnBlocked]}
+                      onPress={() => isBlocked
+                        ? Alert.alert(
+                            'Chưa thể xuất bến',
+                            `Còn ${blockedOrders.length} đơn chưa xử lý. Vui lòng lấy hàng và xác nhận tại bến trước khi xuất phát.`,
+                            [
+                              { text: 'Đi xử lý đơn', onPress: () => router.push('/(driver)/' as any) },
+                              { text: 'Đóng', style: 'cancel' },
+                            ]
+                          )
+                        : onCheckpoint(cp)
+                      }
+                      disabled={updateCheckpoint.isPending}
+                    >
+                      {!isBlocked && <LinearGradient colors={[Colors.blueDark, Colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />}
+                      <Ionicons
+                        name={isBlocked ? 'lock-closed-outline' : 'checkmark-circle-outline'}
+                        size={14}
+                        color={Colors.white}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.cpBtnText}>{isBlocked ? 'Bị khóa' : 'Cập nhật'}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={[styles.cpLabel, isDone && { color: Colors.secondary }]}>{cp.label}</Text>
-                  <Text style={styles.cpDesc}>{cp.desc}</Text>
-                  {isDone && <Text style={styles.cpDone}>✓ Đã hoàn thành</Text>}
-                </View>
-                {isNext && (
-                  <TouchableOpacity
-                    style={styles.cpBtn}
-                    onPress={() => onCheckpoint(cp)}
-                    disabled={updateCheckpoint.isPending}
-                  >
-                    <LinearGradient colors={[Colors.blueDark, Colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-                    <Text style={styles.cpBtnText}>Cập nhật</Text>
-                  </TouchableOpacity>
+
+                {/* Warning banner khi bị khóa */}
+                {isBlocked && (
+                  <View style={styles.blockedBanner}>
+                    <Ionicons name="warning-outline" size={15} color={Colors.warning} style={{ marginRight: 8, flexShrink: 0 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.blockedBannerTitle}>Còn {blockedOrders.length} đơn chưa xử lý:</Text>
+                      {blockedOrders.map((o: any) => (
+                        <TouchableOpacity
+                          key={o.id}
+                          onPress={() => router.push(`/(driver)/order/${o.id}` as any)}
+                          style={styles.blockedOrderRow}
+                        >
+                          <Ionicons name="cube-outline" size={12} color={Colors.warning} style={{ marginRight: 5 }} />
+                          <Text style={styles.blockedOrderText}>
+                            #{o.trackingCode ?? o.id.slice(-6).toUpperCase()}
+                            <Text style={styles.blockedOrderStatus}> — {STATUS_LABEL[o.status] ?? o.status}</Text>
+                          </Text>
+                          <Ionicons name="chevron-forward" size={12} color={Colors.warning} style={{ marginLeft: 'auto' }} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
                 )}
+
+                {isBlocked && i < CHECKPOINTS.length - 1 && <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.bg }} />}
               </View>
             );
           })}
@@ -215,6 +295,24 @@ export default function TripScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        {/* Complete trip button */}
+        {trip.status === 'ARRIVED' && (() => {
+          const allDone = (trip.orders ?? []).every((o: any) =>
+            ['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status),
+          );
+          return (
+            <TouchableOpacity
+              style={[styles.completeBtn, !allDone && styles.completeBtnDisabled]}
+              onPress={allDone ? onCompleteTrip : () => Alert.alert('Chưa thể hoàn tất', 'Vẫn còn đơn hàng chưa được giao xong.')}
+              disabled={completeTrip.isPending}
+            >
+              <Ionicons name={allDone ? 'checkmark-circle' : 'lock-closed-outline'} size={22} color={Colors.white} style={{ marginRight: 8 }} />
+              <Text style={styles.completeBtnText}>
+                {completeTrip.isPending ? 'Đang xử lý...' : allDone ? 'Hoàn tất chuyến xe & Reset xe' : `Còn ${(trip.orders ?? []).filter((o: any) => !['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status)).length} đơn chưa giao`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })()}
       </ScrollView>
     </View>
   );
@@ -251,8 +349,16 @@ const styles = StyleSheet.create({
   cpLabel: { ...Typography.bodyBold, color: Colors.dark },
   cpDesc: { ...Typography.caption, color: Colors.secondary, marginTop: 2 },
   cpDone: { ...Typography.caption, color: Colors.success, marginTop: 4, fontWeight: '600' },
+  cpIconBlocked: { backgroundColor: Colors.warning },
   cpBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, overflow: 'hidden' },
+  cpBtnBlocked: { backgroundColor: Colors.warning },
   cpBtnText: { ...Typography.smallBold, color: Colors.white },
+
+  blockedBanner: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: Colors.warningBg, borderRadius: Layout.radiusSm, padding: 12, marginBottom: 10 },
+  blockedBannerTitle: { ...Typography.smallBold, color: '#92400E', marginBottom: 8 },
+  blockedOrderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
+  blockedOrderText: { ...Typography.small, color: '#92400E', flex: 1 },
+  blockedOrderStatus: { ...Typography.caption, color: Colors.warning },
 
   orderItem: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.bg },
   orderCode: { ...Typography.bodyBold, color: Colors.navy },
@@ -260,6 +366,10 @@ const styles = StyleSheet.create({
   orderAddr: { ...Typography.caption, color: Colors.placeholder, marginLeft: 4 },
   deliverBtn: { backgroundColor: Colors.successBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
   deliverBtnText: { ...Typography.smallBold, color: Colors.success },
+
+  completeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.success, borderRadius: Layout.radiusLg, padding: 16, marginBottom: 12, ...Shadow.md },
+  completeBtnDisabled: { backgroundColor: Colors.secondary },
+  completeBtnText: { ...Typography.bodyBold, color: Colors.white },
 
   noTrip: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   emptyIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: 'rgba(96,165,250,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },

@@ -11,9 +11,11 @@ import { Typography, Layout, Shadow } from '@constants/Layout';
 
 const TABS = [
   { key: '', label: 'Tất cả' },
+  { key: 'PENDING', label: 'Chờ xác nhận' },
   { key: 'IN_TRANSIT', label: 'Đang giao' },
   { key: 'DELIVERED', label: 'Đã nhận' },
   { key: 'CANCELLED', label: 'Đã hủy' },
+  { key: 'DISPUTED', label: 'Khiếu nại' },
 ];
 
 const GOODS_LABEL: Record<string, string> = {
@@ -29,6 +31,8 @@ export default function OrderHistoryScreen() {
   const { data: orders, refetch } = useQuery({
     queryKey: ['orders', activeTab],
     queryFn: () => ordersApi.getMyOrders(activeTab || undefined),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const onRefresh = async () => { setRefreshing(true); await refetch(); setRefreshing(false); };

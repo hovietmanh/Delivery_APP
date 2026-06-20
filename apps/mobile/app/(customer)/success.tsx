@@ -1,12 +1,36 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Share } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Share, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import * as Clipboard from 'expo-clipboard';
 import { ordersApi } from '@services/orders.api';
 import { Colors } from '@constants/Colors';
 import { Typography, Layout, Shadow } from '@constants/Layout';
+
+function fmtDateTime(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = d.getFullYear();
+  return `${hh}:${mm}  ${dd}/${mo}/${yy}`;
+}
+
+function computeTimes(order: any) {
+  const dep = order?.trip?.departureTime;
+  const arr = order?.trip?.arrivalEta;
+  if (!dep) return { departure: null, arrival: null };
+  const departure = fmtDateTime(dep);
+  // Use arrivalEta from DB if available, else +12h
+  const arrival = arr
+    ? fmtDateTime(arr)
+    : fmtDateTime(new Date(new Date(dep).getTime() + 12 * 60 * 60 * 1000).toISOString());
+  return { departure, arrival };
+}
 
 export default function SuccessScreen() {
   const insets = useSafeAreaInsets();
@@ -18,9 +42,16 @@ export default function SuccessScreen() {
     enabled: !!orderId,
   });
 
+  const { departure, arrival } = computeTimes(order);
+
+  const copyCode = async () => {
+    await Clipboard.setStringAsync(trackingCode ?? '');
+    Alert.alert('Đã sao chép', `Mã vận đơn ${trackingCode} đã được sao chép.`);
+  };
+
   const shareCode = async () => {
     await Share.share({
-      message: `Mã vận đơn Delilog của bạn: ${trackingCode}\nTra cứu tại: delilog.vn/track/${trackingCode}`,
+      message: `Mã vận đơn LT-Move của bạn: ${trackingCode}\nTra cứu tại: delilog.vn/track/${trackingCode}`,
     });
   };
 
@@ -44,8 +75,8 @@ export default function SuccessScreen() {
             <Text style={styles.codeLabel}>Mã vận đơn</Text>
             <Text style={styles.code}>{trackingCode}</Text>
           </View>
-          <TouchableOpacity onPress={shareCode} style={styles.copyBtn}>
-            <Text style={styles.copyIcon}>📋</Text>
+          <TouchableOpacity onPress={copyCode} style={styles.copyBtn}>
+            <Ionicons name="copy-outline" size={22} color={Colors.white} />
           </TouchableOpacity>
         </View>
 
@@ -56,9 +87,9 @@ export default function SuccessScreen() {
               <Text style={styles.cardTitle}>Thông tin vận chuyển</Text>
               {[
                 { label: 'Tuyến đường', value: `${order.fromCity} → ${order.toCity}` },
-                { label: 'Giờ xuất bến', value: order.departureTime ?? '—' },
-                { label: 'Dự kiến đến', value: order.estimatedArrival ?? '—' },
-                { label: 'Đã thanh toán', value: `${order.total?.toLocaleString('vi-VN')}đ ✓`, highlight: true },
+                { label: 'Giờ xuất bến', value: departure ?? '—' },
+                { label: 'Dự kiến đến', value: arrival ?? '—' },
+                { label: 'Cần thanh toán', value: `${order.total?.toLocaleString('vi-VN')}đ`, highlight: true },
               ].map(({ label, value, highlight }) => (
                 <View key={label} style={styles.infoRow}>
                   <Text style={styles.infoLabel}>{label}</Text>
@@ -102,10 +133,7 @@ export default function SuccessScreen() {
           <View style={{ height: 10 }} />
           <TouchableOpacity
             style={styles.btnPrimary}
-            onPress={() => {
-              router.replace('/(customer)/send' as any);
-              router.replace('/(customer)' as any);
-            }}
+            onPress={() => router.navigate('/(customer)' as any)}
             activeOpacity={0.85}
           >
             <LinearGradient colors={[Colors.blueDark, Colors.blue]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
@@ -138,7 +166,6 @@ const styles = StyleSheet.create({
   codeLabel: { ...Typography.small, color: 'rgba(255,255,255,0.6)', marginBottom: 4 },
   code: { ...Typography.h3, color: Colors.white, letterSpacing: 1 },
   copyBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  copyIcon: { fontSize: 24 },
 
   card: {
     backgroundColor: Colors.white, borderRadius: Layout.radiusLg,

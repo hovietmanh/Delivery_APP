@@ -177,7 +177,15 @@ export default function LoginScreen() {
       await login(data.phone, data.password);
       router.replace('/(customer)');
     } catch (e: any) {
-      Alert.alert('Đăng nhập thất bại', e.message ?? 'Vui lòng thử lại');
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 400 || status === 401) {
+        Alert.alert('Đăng nhập thất bại', 'Số điện thoại hoặc mật khẩu không đúng.');
+      } else if (serverMsg) {
+        Alert.alert('Đăng nhập thất bại', serverMsg);
+      } else {
+        Alert.alert('Đăng nhập thất bại', 'Không thể kết nối. Vui lòng thử lại.');
+      }
     }
   };
 
@@ -186,7 +194,15 @@ export default function LoginScreen() {
       await loginDriver(driverCode, vehiclePlate, password);
       router.replace('/(driver)');
     } catch (e: any) {
-      Alert.alert('Đăng nhập thất bại', e.response?.data?.message ?? e.message ?? 'Vui lòng thử lại');
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 400 || status === 401) {
+        Alert.alert('Đăng nhập thất bại', 'Mã tài xế, biển số xe hoặc mật khẩu không đúng.');
+      } else if (serverMsg) {
+        Alert.alert('Đăng nhập thất bại', serverMsg);
+      } else {
+        Alert.alert('Đăng nhập thất bại', 'Không thể kết nối. Vui lòng thử lại.');
+      }
     }
   };
 

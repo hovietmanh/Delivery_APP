@@ -51,7 +51,14 @@ export class DriversService {
         },
       }),
       this.prisma.order.count({ where: { trip: { driverId: driver.id }, createdAt: { gte: today } } }),
-      this.prisma.order.count({ where: { trip: { driverId: driver.id }, status: OrderStatus.DELIVERED } }),
+      this.prisma.order.count({
+        where: {
+          OR: [
+            { trip: { driverId: driver.id }, status: OrderStatus.DELIVERED },
+            { assignedDriverId: driver.id, status: OrderStatus.DELIVERED },
+          ],
+        },
+      }),
     ]);
 
     return {
@@ -97,10 +104,13 @@ export class DriversService {
       });
     }
 
+    const statusFilter = status ? { status: status as OrderStatus } : {};
     return this.prisma.order.findMany({
       where: {
-        trip: { driverId: driver.id },
-        ...(status ? { status: status as OrderStatus } : {}),
+        OR: [
+          { trip: { driverId: driver.id }, ...statusFilter },
+          { assignedDriverId: driver.id, ...statusFilter },
+        ],
       },
       include: { customer: { include: { user: { select: { fullName: true, phone: true } } } } },
       orderBy: { createdAt: 'desc' },
@@ -400,6 +410,29 @@ export class DriversService {
         todayPricePerKg: data.pricePerKg ?? null,
       },
     });
+
+    // Tạo hoặc cập nhật Trip BOARDING ngay khi tài xế đặt tuyến
+    const existingTrip = await this.prisma.trip.findFirst({
+      where: { driverId: driver.id, status: TripStatus.BOARDING },
+    });
+
+    const routeId = await this.ensureRoute(data.fromCity, data.toCity);
+    const departureTime = this.parseDepartureTime(data.departureTime);
+    const travelHours = this.estimateTravelHours(data.fromCity, data.toCity);
+    const arrivalEta = new Date(departureTime.getTime() + travelHours * 60 * 60 * 1000);
+    const pricePerKg = data.pricePerKg ?? 15000;
+
+    if (existingTrip) {
+      await this.prisma.trip.update({
+        where: { id: existingTrip.id },
+        data: { routeId, departureTime, arrivalEta, pricePerKg },
+      });
+    } else {
+      await this.prisma.trip.create({
+        data: { routeId, driverId: driver.id, departureTime, arrivalEta, capacityKg: 1000, pricePerKg, status: TripStatus.BOARDING },
+      });
+    }
+
     return {
       fromCity: updated.todayFromCity,
       toCity: updated.todayToCity,
@@ -455,6 +488,49 @@ export class DriversService {
     });
   }
 
+  // ── Complete trip & reset driver state ───────────────────────────────────
+
+  async completeTrip(userId: string, tripId: string) {
+    const driver = await this.getDriver(userId);
+
+    const trip = await this.prisma.trip.findFirst({
+      where: { id: tripId, driverId: driver.id },
+      include: { orders: { select: { id: true, status: true } } },
+    });
+    if (!trip) throw new NotFoundException('Không tìm thấy chuyến xe');
+    if (trip.status !== TripStatus.ARRIVED) {
+      throw new BadRequestException('Chỉ hoàn tất được khi xe đã đến bến đích');
+    }
+
+    const unfinished = trip.orders.filter(
+      (o) => !['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status as string),
+    );
+    if (unfinished.length > 0) {
+      throw new BadRequestException(`Còn ${unfinished.length} đơn chưa giao xong. Vui lòng xử lý hết trước khi hoàn tất chuyến.`);
+    }
+
+    await this.prisma.$transaction([
+      // Đánh dấu chuyến COMPLETED
+      this.prisma.trip.update({
+        where: { id: tripId },
+        data: { status: TripStatus.COMPLETED, progressPercent: 100 },
+      }),
+      // Reset trạng thái tài xế cho chuyến mới
+      this.prisma.driver.update({
+        where: { id: driver.id },
+        data: {
+          todayFromCity: null,
+          todayToCity: null,
+          todayDepartureTime: null,
+          todayPricePerKg: null,
+          totalTrips: { increment: 1 },
+        },
+      }),
+    ]);
+
+    return { message: 'Hoàn tất chuyến xe thành công. Sẵn sàng cho chuyến mới!' };
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   private calcProgress(checkpoint: string): number {
@@ -467,6 +543,10 @@ export class DriversService {
   }
 
   private async ensureRoute(fromCity: string, toCity: string): Promise<string> {
+    const existing = await this.prisma.route.findFirst({
+      where: { fromCity, toCity },
+    });
+    if (existing) return existing.id;
     const hours = this.estimateTravelHours(fromCity, toCity);
     const route = await this.prisma.route.create({
       data: {

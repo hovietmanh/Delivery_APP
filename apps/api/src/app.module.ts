@@ -12,6 +12,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { VouchersModule } from './modules/vouchers/vouchers.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { PrismaModule } from './config/prisma.module';
 
 @Module({
@@ -36,6 +38,8 @@ import { PrismaModule } from './config/prisma.module';
     ReviewsModule,
     TripsModule,
     VouchersModule,
+    ChatModule,
+    ComplaintsModule,
   ],
 })
 export class AppModule {}

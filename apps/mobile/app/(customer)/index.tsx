@@ -1,6 +1,6 @@
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, TextInput, RefreshControl, Modal,
+  StyleSheet, TextInput, RefreshControl, Modal, Alert, ActivityIndicator,
 } from 'react-native';
 import { useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
@@ -27,13 +27,14 @@ const QUICK_ACTIONS = [
   { icon: 'cube' as const, label: 'Gửi hàng', route: '/(customer)/send', color: Colors.blue, bg: Colors.infoBg },
   { icon: 'list' as const, label: 'Lịch sử', route: '/(customer)/orders', color: '#8B5CF6', bg: Colors.purpleBg },
   { icon: 'search' as const, label: 'Tra cứu', route: null, color: '#F97316', bg: Colors.orangeBg },
-  { icon: 'headset' as const, label: 'Hỗ trợ', route: null, color: '#10B981', bg: Colors.greenBg },
+  { icon: 'headset' as const, label: 'Hỗ trợ', route: '/(customer)/support', color: '#10B981', bg: Colors.greenBg },
 ];
 
 export default function CustomerHome() {
   const { user } = useAuthStore();
   const insets = useSafeAreaInsets();
   const [trackCode, setTrackCode] = useState('');
+  const [tracking, setTracking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<any>(null);
   const [copied, setCopied] = useState(false);
@@ -110,14 +111,25 @@ export default function CustomerHome() {
               />
             </View>
             <TouchableOpacity
-              style={styles.trackBtn}
-              onPress={() => {
+              style={[styles.trackBtn, tracking && { opacity: 0.7 }]}
+              disabled={tracking}
+              onPress={async () => {
                 const code = trackCode.trim().toUpperCase();
                 if (!code) return;
-                router.push(`/(customer)/orders/${code}` as any);
+                setTracking(true);
+                try {
+                  await ordersApi.getOrder(code);
+                  router.push(`/(customer)/orders/${code}` as any);
+                } catch {
+                  Alert.alert('Không tìm thấy', `Không có đơn hàng nào với mã "${code}".\nKiểm tra lại mã vận đơn và thử lại.`);
+                } finally {
+                  setTracking(false);
+                }
               }}
             >
-              <Text style={styles.trackBtnText}>Tra</Text>
+              {tracking
+                ? <ActivityIndicator size="small" color={Colors.white} />
+                : <Text style={styles.trackBtnText}>Tra</Text>}
             </TouchableOpacity>
           </View>
         </View>

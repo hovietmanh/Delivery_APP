@@ -3,16 +3,20 @@ import { router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { notificationsApi } from '@services/notifications.api';
 import { Colors } from '@constants/Colors';
 import { Typography, Layout } from '@constants/Layout';
 
-const TYPE_ICONS: Record<string, string> = {
-  order_update: '🚌',
-  payment: '💳',
-  promotion: '🎁',
-  complaint: '⚠️',
+type IconConfig = { name: React.ComponentProps<typeof Ionicons>['name']; color: string; bg: string };
+
+const TYPE_ICON: Record<string, IconConfig> = {
+  order_update: { name: 'cube-outline',         color: Colors.blue,  bg: '#EFF6FF' },
+  payment:      { name: 'card-outline',          color: '#10B981',    bg: '#ECFDF5' },
+  promotion:    { name: 'gift-outline',          color: '#8B5CF6',    bg: '#F5F3FF' },
+  complaint:    { name: 'warning-outline',       color: '#F97316',    bg: '#FFF7ED' },
 };
+const DEFAULT_ICON: IconConfig = { name: 'notifications-outline', color: Colors.secondary, bg: Colors.bg };
 
 function groupByDate(notifications: any[]) {
   const groups: Record<string, any[]> = {};
@@ -52,8 +56,8 @@ export default function NotificationsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.back}>←</Text>
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(customer)')} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={24} color={Colors.dark} />
         </TouchableOpacity>
         <Text style={styles.title}>Thông báo</Text>
         <TouchableOpacity onPress={() => markAllRead.mutate()}>
@@ -67,27 +71,32 @@ export default function NotificationsScreen() {
       >
         {Object.keys(groups).length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>🔔</Text>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="notifications-off-outline" size={40} color={Colors.secondary} />
+            </View>
             <Text style={styles.emptyText}>Chưa có thông báo nào</Text>
           </View>
         ) : (
           Object.entries(groups).map(([date, items]) => (
             <View key={date}>
               <Text style={styles.dateLabel}>{date}</Text>
-              {items.map((n) => (
-                <TouchableOpacity key={n.id} style={[styles.item, !n.isRead && styles.itemUnread]}>
-                  <View style={[styles.iconWrap, !n.isRead && styles.iconWrapUnread]}>
-                    <Text style={styles.icon}>{TYPE_ICONS[n.type] ?? '📢'}</Text>
-                  </View>
-                  <View style={styles.content}>
-                    <Text style={styles.itemTitle}>{n.title}</Text>
-                    <Text style={styles.itemBody} numberOfLines={2}>{n.body}</Text>
-                  </View>
-                  <Text style={styles.time}>
-                    {new Date(n.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {items.map((n) => {
+                const cfg = TYPE_ICON[n.type] ?? DEFAULT_ICON;
+                return (
+                  <TouchableOpacity key={n.id} style={[styles.item, !n.isRead && styles.itemUnread]}>
+                    <View style={[styles.iconWrap, { backgroundColor: cfg.bg }]}>
+                      <Ionicons name={cfg.name} size={22} color={cfg.color} />
+                    </View>
+                    <View style={styles.content}>
+                      <Text style={styles.itemTitle}>{n.title}</Text>
+                      <Text style={styles.itemBody} numberOfLines={2}>{n.body}</Text>
+                    </View>
+                    <Text style={styles.time}>
+                      {new Date(n.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))
         )}
@@ -102,7 +111,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white, paddingHorizontal: Layout.padding, paddingBottom: 12,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  back: { fontSize: 22, color: Colors.dark },
+  backBtn: { padding: 2 },
   title: { ...Typography.h3, color: Colors.dark },
   markAll: { ...Typography.small, color: Colors.blue },
   dateLabel: { ...Typography.smallBold, color: Colors.secondary, padding: Layout.padding, paddingBottom: 8, letterSpacing: 0.5 },
@@ -112,14 +121,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.bg,
   },
   itemUnread: { backgroundColor: Colors.infoBg },
-  iconWrap: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  iconWrapUnread: { backgroundColor: Colors.blue + '20' },
-  icon: { fontSize: 22 },
+  iconWrap: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   content: { flex: 1, marginRight: 8 },
   itemTitle: { ...Typography.bodyBold, color: Colors.dark },
   itemBody: { ...Typography.small, color: Colors.secondary, marginTop: 3 },
   time: { ...Typography.caption, color: Colors.secondary, marginTop: 3 },
   empty: { alignItems: 'center', paddingTop: 100 },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyText: { ...Typography.body, color: Colors.secondary },
 });

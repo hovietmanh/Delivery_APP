@@ -61,10 +61,16 @@ export class VouchersService {
     });
   }
 
-  async findActiveList() {
+  async findActiveList(customerId?: string) {
     const now = new Date();
     const vouchers = await this.prisma.voucher.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        OR: [
+          { forCustomerId: null },
+          ...(customerId ? [{ forCustomerId: customerId }] : []),
+        ],
+      },
       orderBy: { createdAt: 'desc' },
     });
     return vouchers.filter(v =>

@@ -24,7 +24,7 @@ export function Header({ title, subtitle, showBack = true, right, dark = false, 
   const content = (
     <View style={[styles.row]}>
       {showBack ? (
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="chevron-back" size={26} color={isColored ? Colors.white : Colors.dark} />
         </TouchableOpacity>
       ) : (

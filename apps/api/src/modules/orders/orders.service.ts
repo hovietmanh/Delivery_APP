@@ -9,6 +9,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatus } from '@prisma/client';
+import { ComplaintAiService } from '../complaints/complaint-ai.service';
 
 const VALID_TRANSITIONS: Record<string, OrderStatus[]> = {
   PENDING:           ['CONFIRMED', 'CANCELLED'],
@@ -29,6 +30,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly paymentsService: PaymentsService,
     private readonly notificationsService: NotificationsService,
+    private readonly complaintAiService: ComplaintAiService,
   ) {}
 
   async create(userId: string, dto: CreateOrderDto) {
@@ -51,6 +53,7 @@ export class OrdersService {
         serviceType: dto.serviceType,
         goodsType: dto.goodsType,
         weightRange: dto.weightRange,
+        actualWeightKg: dto.actualWeightKg ?? null,
         goodsDescription: dto.goodsDescription,
         goodsValue: dto.goodsValue,
         senderName: dto.senderName,
@@ -165,12 +168,25 @@ export class OrdersService {
       include: {
         customer: { include: { user: true } },
         trip: { include: { driver: { include: { user: true } }, route: true } },
+        assignedDriver: true,
         tracking: { orderBy: { timestamp: 'asc' } },
         complaint: true,
         review: true,
       },
     });
     if (!order) throw new NotFoundException('Order not found');
+
+    // If order has no trip (assigned via driver, not tripId), attach driver's trip for departure times
+    if (!order.tripId && order.assignedDriverId) {
+      const driverTrip = await this.prisma.trip.findFirst({
+        where: { driverId: order.assignedDriverId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (driverTrip) {
+        (order as any).trip = driverTrip;
+      }
+    }
+
     return order;
   }
 
@@ -230,8 +246,11 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
 
-    if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
-      throw new BadRequestException('Order cannot be cancelled at this stage');
+    if (order.status !== 'PENDING') {
+      if (order.status === 'CONFIRMED') {
+        throw new BadRequestException('Nhà xe đã xác nhận đơn hàng. Vui lòng liên hệ nhà xe trực tiếp để được hỗ trợ hủy.');
+      }
+      throw new BadRequestException('Đơn hàng không thể hủy ở giai đoạn này.');
     }
 
     const customer = await this.prisma.customer.findUnique({ where: { userId } });
@@ -345,11 +364,115 @@ export class OrdersService {
       }).catch(() => {});
     }
 
+    // Phân tích AI bất đồng bộ
+    this.runComplaintAi(complaint.id, orderId, dto.reason, dto.description).catch(() => {});
+
     return complaint;
+  }
+
+  private async runComplaintAi(complaintId: string, orderId: string, reason: string, description: string) {
+    const events = await this.prisma.orderTrackingEvent.findMany({
+      where: { orderId, photoUrl: { not: null } },
+      orderBy: { timestamp: 'asc' },
+    });
+    const loadingStatuses = ['PICKING_UP', 'AT_STATION', 'CONFIRMED'];
+    const unloadingStatuses = ['ARRIVED', 'DELIVERED'];
+    const loadingPhotos = events.filter((e) => loadingStatuses.includes(e.status as string) && e.photoUrl).map((e) => e.photoUrl!);
+    const unloadingPhotos = events.filter((e) => unloadingStatuses.includes(e.status as string) && e.photoUrl).map((e) => e.photoUrl!);
+
+    const verdict = await this.complaintAiService.analyzeComplaint({
+      loadingPhotos, unloadingPhotos, customerPhotos: [], reason, description,
+    });
+
+    await this.prisma.complaint.update({
+      where: { id: complaintId },
+      data: {
+        aiVerdict: verdict.verdict,
+        aiConfidence: verdict.confidence,
+        aiReason: verdict.reason,
+        aiAnalyzedAt: new Date(),
+        status: 'REVIEWING' as any,
+      },
+    });
+
+    // Thông báo sau khi AI xong
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { id: complaintId },
+      include: {
+        customer: { include: { user: { select: { id: true } } } },
+        order: {
+          select: { trackingCode: true },
+          include: { trip: { include: { driver: { include: { user: { select: { id: true } } } } } } },
+        },
+      },
+    });
+    if (!complaint) return;
+
+    const verdictLabel = verdict.verdict === 'DAMAGED' ? 'phát hiện dấu hiệu hư hỏng'
+      : verdict.verdict === 'NOT_DAMAGED' ? 'không phát hiện hư hỏng'
+      : 'cần xem xét thêm';
+
+    if (complaint.customer?.user?.id) {
+      this.notificationsService.create({
+        userId: complaint.customer.user.id,
+        title: '🤖 AI đã phân tích xong',
+        body: `Khiếu nại đơn ${complaint.order.trackingCode}: AI ${verdictLabel}. Nhấn để xem chi tiết.`,
+        type: 'complaint',
+        data: { orderId },
+      }).catch(() => {});
+    }
+
+    const driverUserId = complaint.order?.trip?.driver?.user?.id;
+    if (driverUserId) {
+      this.notificationsService.create({
+        userId: driverUserId,
+        title: '⚠️ Khiếu nại cần xem xét',
+        body: `Đơn ${complaint.order.trackingCode}: AI ${verdictLabel} (${Math.round(verdict.confidence * 100)}%). Vào mục Khiếu nại để xử lý.`,
+        type: 'complaint',
+        data: { orderId },
+      }).catch(() => {});
+    }
   }
 
   async getComplaint(orderId: string) {
     return this.prisma.complaint.findUnique({ where: { orderId } });
+  }
+
+  async disputeAiResult(userId: string, orderId: string, reason: string) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId } });
+    if (!customer) throw new ForbiddenException();
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { orderId },
+      include: {
+        order: {
+          include: { trip: { include: { driver: { include: { user: { select: { id: true } } } } } } },
+        },
+      },
+    });
+    if (!complaint || complaint.customerId !== customer.id) throw new ForbiddenException();
+
+    const driverUserId = complaint.order?.trip?.driver?.user?.id;
+    if (driverUserId) {
+      this.notificationsService.create({
+        userId: driverUserId,
+        title: '🙋 Khách không đồng ý với kết quả AI',
+        body: `Đơn ${complaint.order.trackingCode}: "${reason}". Vui lòng xem xét lại.`,
+        type: 'complaint',
+        data: { orderId },
+      }).catch(() => {});
+    }
+    return { message: 'Đã ghi nhận phản đối. Nhà xe sẽ xem xét lại.' };
+  }
+
+  async reanalyzeComplaint(orderId: string) {
+    const complaint = await this.prisma.complaint.findUnique({ where: { orderId } });
+    if (!complaint) throw new NotFoundException('Complaint not found');
+    await this.prisma.complaint.update({
+      where: { orderId },
+      data: { aiVerdict: null, aiConfidence: null, aiReason: null, aiAnalyzedAt: null },
+    });
+    this.runComplaintAi(complaint.id, orderId, complaint.reason, complaint.description).catch(() => {});
+    return { message: 'AI re-analysis started' };
   }
 
   // ── Complaint resolution flow ─────────────────────────────────────────────

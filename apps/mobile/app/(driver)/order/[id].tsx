@@ -43,7 +43,10 @@ export default function DriverOrderDetailScreen() {
 
   const accept = useMutation({
     mutationFn: () => driverApi.acceptOrder(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['driver-orders'] }); router.back(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['driver-orders'] });
+      qc.invalidateQueries({ queryKey: ['driver-order', id] });
+    },
     onError: (e: any) => Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể nhận đơn'),
   });
 
@@ -55,16 +58,16 @@ export default function DriverOrderDetailScreen() {
   const startPickup = useMutation({
     mutationFn: () => driverApi.startPickup(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['driver-orders', 'driver-order'] });
+      qc.invalidateQueries({ queryKey: ['driver-orders'] });
+      qc.invalidateQueries({ queryKey: ['driver-order', id] });
       Alert.alert('✅ Đã thông báo', 'Khách hàng được thông báo chuẩn bị hàng. Hãy đến lấy hàng!');
-      router.back();
     },
     onError: (e: any) => Alert.alert('Lỗi', e?.response?.data?.message ?? 'Không thể cập nhật'),
   });
 
   const onAccept = () => Alert.alert('Xác nhận nhận đơn', `Nhận đơn ${order?.trackingCode}?`, [
     { text: 'Hủy', style: 'cancel' },
-    { text: 'Nhận đơn', onPress: () => accept.mutate() },
+    { text: 'Nhận đơn', onPress: () => accept.mutate(), style: 'default' },
   ]);
 
   const onReject = () => Alert.alert('Từ chối đơn', 'Lý do từ chối?', [
@@ -134,10 +137,10 @@ export default function DriverOrderDetailScreen() {
             <Text style={styles.cardTitle}>Thông tin hàng hóa</Text>
           </View>
           <InfoRow label="Loại hàng" value={GOODS_LABELS[order.goodsType] ?? order.goodsType} />
-          <InfoRow label="Trọng lượng" value={order.weightKg ? `${order.weightKg} kg` : (WEIGHT_LABELS[order.weightRange] ?? order.weightRange)} />
+          <InfoRow label="Trọng lượng" value={order.actualWeightKg ? `${order.actualWeightKg} kg` : (WEIGHT_LABELS[order.weightRange] ?? order.weightRange)} />
           <InfoRow label="Dịch vụ" value={SERVICE_LABELS[order.serviceType] ?? order.serviceType} />
-          {order.goodsDescription && <InfoRow label="Mô tả" value={order.goodsDescription} />}
-          {order.goodsValue && <InfoRow label="Giá trị khai báo" value={`${order.goodsValue.toLocaleString('vi-VN')}đ`} />}
+          {!!order.goodsDescription && <InfoRow label="Mô tả" value={order.goodsDescription} />}
+          {!!order.goodsValue && <InfoRow label="Giá trị khai báo" value={`${order.goodsValue.toLocaleString('vi-VN')}đ`} />}
         </View>
 
         {/* Sender */}
@@ -177,7 +180,7 @@ export default function DriverOrderDetailScreen() {
           <InfoRow label="Cước vận chuyển" value={`${order.shippingFee?.toLocaleString('vi-VN')}đ`} />
           <InfoRow label="Tổng cộng" value={`${order.total?.toLocaleString('vi-VN')}đ`} highlight />
           <InfoRow label="Phương thức" value={order.paymentMethod} />
-          {order.codAmount && <InfoRow label="Thu hộ (COD)" value={`${order.codAmount.toLocaleString('vi-VN')}đ`} highlight />}
+          {!!order.codAmount && <InfoRow label="Thu hộ (COD)" value={`${order.codAmount.toLocaleString('vi-VN')}đ`} highlight />}
         </View>
       </ScrollView>
 

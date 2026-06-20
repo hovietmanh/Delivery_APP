@@ -17,6 +17,8 @@ export const driverApi = {
   getActiveTrip: () => api.get('/driver/trip/active').then((r) => r.data),
   updateTripCheckpoint: (tripId: string, checkpoint: string) =>
     api.patch(`/driver/trip/${tripId}/checkpoint`, { checkpoint }).then((r) => r.data),
+  completeTrip: (tripId: string) =>
+    api.patch(`/driver/trip/${tripId}/complete`).then((r) => r.data),
   getComplaints: () => api.get('/driver/complaints').then((r) => r.data),
   respondComplaint: (id: string, response: string) =>
     api.patch(`/driver/complaints/${id}/respond`, { response }).then((r) => r.data),

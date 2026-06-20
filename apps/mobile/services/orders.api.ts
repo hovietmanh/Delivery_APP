@@ -30,6 +30,11 @@ export const ordersApi = {
 
   getComplaint: (id: string) => api.get(`/orders/${id}/complaint`).then((r) => r.data).catch(() => null),
 
+  reanalyzeComplaint: (id: string) => api.post(`/orders/${id}/complaint/reanalyze`).then((r) => r.data),
+
+  disputeAiResult: (id: string, reason: string) =>
+    api.post(`/orders/${id}/complaint/dispute-ai`, { reason }).then((r) => r.data),
+
   resolveComplaint: (id: string, data: { verdict: 'FAULT' | 'NO_FAULT'; message: string }) =>
     api.patch(`/orders/${id}/complaint/resolve`, data).then((r) => r.data),
 

@@ -22,6 +22,7 @@ export class CreateOrderDto {
   @ApiProperty({ enum: ServiceType }) @IsEnum(ServiceType) serviceType: ServiceType;
   @ApiProperty({ enum: GoodsType })  @IsEnum(GoodsType)   goodsType: GoodsType;
   @ApiProperty({ enum: WeightRange }) @IsEnum(WeightRange) weightRange: WeightRange;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) actualWeightKg?: number;
 
   @ApiPropertyOptional() @IsOptional() @IsString() goodsDescription?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) goodsValue?: number;

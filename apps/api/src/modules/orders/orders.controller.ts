@@ -78,6 +78,20 @@ export class OrdersController {
     return this.ordersService.getComplaint(id);
   }
 
+  @Post(':id/complaint/dispute-ai')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Customer disputes AI verdict — notifies driver for manual review' })
+  disputeAiResult(@Param('id') id: string, @Request() req: any, @Body('reason') reason: string) {
+    return this.ordersService.disputeAiResult(req.user.id, id, reason);
+  }
+
+  @Post(':id/complaint/reanalyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Re-trigger AI analysis for a complaint' })
+  reanalyzeComplaint(@Param('id') id: string) {
+    return this.ordersService.reanalyzeComplaint(id);
+  }
+
   @Patch(':id/complaint/resolve')
   @ApiOperation({ summary: 'Driver resolves complaint (FAULT or NO_FAULT)' })
   resolveComplaint(@Param('id') id: string, @Request() req: any, @Body() body: { verdict: 'FAULT' | 'NO_FAULT'; message: string }) {

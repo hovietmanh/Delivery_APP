@@ -93,6 +93,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
         serviceType: draft.serviceType,
         goodsType: draft.goodsType,
         weightRange: draft.weightRange,
+        actualWeightKg: draft.weightKg ?? undefined,
         goodsDescription: draft.goodsDescription,
         goodsValue: draft.goodsValue ? Number(draft.goodsValue) : undefined,
         senderName: draft.senderName,

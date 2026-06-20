@@ -93,11 +93,6 @@ export default function SendStep2() {
                       <Text style={styles.priceUnit}>/kg</Text>
                     </View>
                   </View>
-                  <View style={styles.tripMeta}>
-                    <Text style={styles.metaItem}>⭐ {driver.rating?.toFixed(1)}</Text>
-                    <Text style={styles.metaItem}>⏱ {driver.durationHours}h</Text>
-                    <Text style={styles.metaItem}>📦 {driver.totalTrips} chuyến</Text>
-                  </View>
                   {driver.departureTime && (
                     <View style={styles.timesRow}>
                       <View style={[styles.departureTag, isSelected && styles.departureTagSelected]}>

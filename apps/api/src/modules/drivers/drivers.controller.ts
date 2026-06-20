@@ -103,6 +103,13 @@ export class DriversController {
     return this.driversService.updateTripCheckpoint(req.user.id, tripId, checkpoint);
   }
 
+  @Patch('trip/:tripId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete trip & reset driver state for new trip' })
+  completeTrip(@Request() req: any, @Param('tripId') tripId: string) {
+    return this.driversService.completeTrip(req.user.id, tripId);
+  }
+
   @Get('today-route')
   @ApiOperation({ summary: 'Get today route info' })
   getTodayRoute(@Request() req: any) {

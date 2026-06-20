@@ -366,6 +366,11 @@ model Complaint {
   apologyMessage      String?         // Lời xin lỗi khi FAULT
   apologyVoucherCode  String?         // Mã voucher 20% tạo riêng cho khách
   customerBankAccount String?         // "TênNH - SốTK - TênCT" khách cung cấp
+  // AI analysis
+  aiVerdict           String?         // 'DAMAGED' | 'NOT_DAMAGED' | 'UNCERTAIN'
+  aiConfidence        Float?          // 0.0 – 1.0
+  aiReason            String?         // Giải thích từ AI
+  aiAnalyzedAt        DateTime?
   resolvedAt          DateTime?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
@@ -428,4 +433,16 @@ model Voucher {
   forCustomer Customer? @relation("PrivateVouchers", fields: [forCustomerId], references: [id])
 
   @@map("vouchers")
+}
+
+model KnowledgeBase {
+  id        String   @id @default(cuid())
+  category  String   // FAQ | POLICY | GUIDE
+  question  String
+  answer    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("knowledge_base")
 }

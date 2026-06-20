@@ -225,7 +225,7 @@ export default function PaymentScreen() {
             <View style={{ height: 8 }} />
             <Button
               label="Hủy & quay lại"
-              onPress={() => router.back()}
+              onPress={() => router.canGoBack() ? router.back() : router.replace('/(customer)')}
               variant="outline"
             />
           </>

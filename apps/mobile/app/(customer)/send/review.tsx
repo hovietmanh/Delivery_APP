@@ -1,12 +1,14 @@
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert,
-  TextInput, ActivityIndicator,
+  TextInput, ActivityIndicator, Modal, FlatList,
 } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { useOrderStore } from '@store/order.store';
 import { vouchersApi } from '@services/vouchers.api';
 import { StepIndicator } from '@components/ui/StepIndicator';
@@ -26,18 +28,19 @@ const WEIGHT_LABELS: Record<string, string> = {
   UNDER_5KG: '< 5kg', FROM_5_TO_20KG: '5-20kg', FROM_20_TO_50KG: '20-50kg', OVER_50KG: '> 50kg',
 };
 
+type AppliedVoucher = { id: string; code: string; discount: number; remainingUses: number; expiresAt: string | null };
 
 export default function SendStep4() {
   const insets = useSafeAreaInsets();
+  const qc = useQueryClient();
   const { draft, updateDraft, submitOrder, resetDraft, isSubmitting } = useOrderStore();
 
-  const [voucherCode, setVoucherCode] = useState('');
-  const [appliedVoucher, setAppliedVoucher] = useState<{
-    id: string; code: string; discount: number;
-    remainingUses: number; expiresAt: string | null;
-  } | null>(null);
-  const [voucherLoading, setVoucherLoading] = useState(false);
-  const [voucherError, setVoucherError] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState<AppliedVoucher | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [manualCode, setManualCode] = useState('');
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState('');
+  const [applyingId, setApplyingId] = useState<string | null>(null);
 
   const tripData = (draft as any).tripData;
   const pricePerKg = tripData?.pricePerKg ?? 45000;
@@ -49,31 +52,57 @@ export default function SendStep4() {
   const discount = appliedVoucher?.discount ?? 0;
   const total = baseTotal - discount;
 
-  const applyVoucher = async () => {
-    if (!voucherCode.trim()) return;
-    setVoucherLoading(true);
-    setVoucherError('');
+  const { data: availableVouchers = [], isLoading: vouchersLoading } = useQuery({
+    queryKey: ['vouchers-active'],
+    queryFn: vouchersApi.getActive,
+    enabled: pickerVisible,
+    staleTime: 60_000,
+  });
+
+  const applyManual = async () => {
+    if (!manualCode.trim()) return;
+    setManualLoading(true);
+    setManualError('');
     try {
-      const result = await vouchersApi.validate(voucherCode.trim().toUpperCase(), baseTotal);
+      const result = await vouchersApi.validate(manualCode.trim().toUpperCase(), baseTotal);
       setAppliedVoucher({
         id: result.voucher.id,
         code: result.voucher.code,
         discount: result.discountAmount,
-        remainingUses: result.voucher.maxUses - result.voucher.usedCount - 1, // -1 vì lượt này sắp dùng
+        remainingUses: result.voucher.maxUses - result.voucher.usedCount - 1,
         expiresAt: result.voucher.expiresAt ?? null,
       });
+      setPickerVisible(false);
+      setManualCode('');
     } catch (e: any) {
-      setVoucherError(e.response?.data?.message ?? 'Mã không hợp lệ');
-      setAppliedVoucher(null);
+      setManualError(e.response?.data?.message ?? 'Mã không hợp lệ');
     } finally {
-      setVoucherLoading(false);
+      setManualLoading(false);
+    }
+  };
+
+  const applyFromList = async (voucher: any) => {
+    setApplyingId(voucher.id);
+    try {
+      const result = await vouchersApi.validate(voucher.code, baseTotal);
+      setAppliedVoucher({
+        id: result.voucher.id,
+        code: result.voucher.code,
+        discount: result.discountAmount,
+        remainingUses: result.voucher.maxUses - result.voucher.usedCount - 1,
+        expiresAt: result.voucher.expiresAt ?? null,
+      });
+      setPickerVisible(false);
+    } catch (e: any) {
+      Alert.alert('Không thể áp dụng', e.response?.data?.message ?? 'Voucher không hợp lệ cho đơn này');
+    } finally {
+      setApplyingId(null);
     }
   };
 
   const removeVoucher = () => {
     setAppliedVoucher(null);
-    setVoucherCode('');
-    setVoucherError('');
+    setManualError('');
   };
 
   const onSubmit = async () => {
@@ -86,22 +115,66 @@ export default function SendStep4() {
       } as any);
       const order = await submitOrder();
       resetDraft();
+      qc.invalidateQueries({ queryKey: ['orders'] });
       router.replace({
         pathname: '/(customer)/payment',
         params: { orderId: order.id, trackingCode: order.trackingCode, method: paymentMethod },
       } as any);
     } catch (e: any) {
       const msg = e.response?.data?.message ?? e.message ?? 'Không thể tạo đơn hàng';
-      // Voucher became invalid between apply and submit
       if (msg.includes('voucher') || msg.includes('Voucher')) {
         setAppliedVoucher(null);
-        setVoucherCode('');
-        setVoucherError(msg);
+        setManualError(msg);
         Alert.alert('Voucher không hợp lệ', msg);
       } else {
         Alert.alert('Lỗi', msg);
       }
     }
+  };
+
+  const renderVoucherCard = ({ item: v }: { item: any }) => {
+    const discountLabel = v.discountType === 'PERCENT'
+      ? `Giảm ${v.discountValue}%${v.maxDiscount ? ` (tối đa ${v.maxDiscount.toLocaleString('vi-VN')}đ)` : ''}`
+      : `Giảm ${v.discountValue?.toLocaleString('vi-VN')}đ`;
+    const remaining = v.maxUses - v.usedCount;
+    const isApplying = applyingId === v.id;
+    const isApplied = appliedVoucher?.id === v.id;
+
+    return (
+      <View style={styles.voucherCard}>
+        <View style={styles.voucherCardLeft}>
+          <View style={styles.voucherCodeBadge}>
+            <Text style={styles.voucherCardCode}>{v.code}</Text>
+          </View>
+          <Text style={styles.voucherCardDiscount}>{discountLabel}</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+            <Text style={styles.voucherCardMeta}>
+              Còn {remaining} lượt
+            </Text>
+            {v.expiresAt && (
+              <Text style={styles.voucherCardMeta}>
+                HSD: {new Date(v.expiresAt).toLocaleDateString('vi-VN')}
+              </Text>
+            )}
+            {v.minOrderValue > 0 && (
+              <Text style={styles.voucherCardMeta}>
+                Đơn tối thiểu {v.minOrderValue.toLocaleString('vi-VN')}đ
+              </Text>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[styles.voucherSelectBtn, isApplied && styles.voucherSelectBtnApplied]}
+          onPress={() => applyFromList(v)}
+          disabled={isApplying || isApplied}
+        >
+          {isApplying
+            ? <ActivityIndicator size="small" color={Colors.white} />
+            : <Text style={styles.voucherSelectBtnText}>{isApplied ? 'Đã chọn' : 'Chọn'}</Text>
+          }
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
@@ -163,7 +236,9 @@ export default function SendStep4() {
         {/* ── Mã giảm giá ── */}
         {appliedVoucher ? (
           <View style={styles.couponApplied}>
-            <Ionicons name="gift-outline" size={22} color={Colors.success} style={{ marginRight: 10 }} />
+            <View style={[styles.couponAppliedIconWrap]}>
+              <Ionicons name="gift-outline" size={22} color={Colors.success} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.couponAppliedCode}>{appliedVoucher.code}</Text>
               <Text style={styles.couponAppliedSave}>
@@ -171,13 +246,9 @@ export default function SendStep4() {
               </Text>
               <View style={styles.couponMeta}>
                 {appliedVoucher.remainingUses > 0 ? (
-                  <Text style={styles.couponMetaText}>
-                    Còn {appliedVoucher.remainingUses} lượt sau khi bạn dùng
-                  </Text>
+                  <Text style={styles.couponMetaText}>Còn {appliedVoucher.remainingUses} lượt sau khi bạn dùng</Text>
                 ) : (
-                  <Text style={[styles.couponMetaText, { color: '#F59E0B' }]}>
-                    Đây là lượt sử dụng cuối cùng!
-                  </Text>
+                  <Text style={[styles.couponMetaText, { color: '#F59E0B' }]}>Đây là lượt sử dụng cuối cùng!</Text>
                 )}
                 {appliedVoucher.expiresAt && (
                   <Text style={styles.couponMetaText}>
@@ -187,35 +258,18 @@ export default function SendStep4() {
               </View>
             </View>
             <TouchableOpacity onPress={removeVoucher} style={styles.couponRemove}>
-              <Ionicons name="close-circle" size={20} color={Colors.secondary} />
+              <Ionicons name="close-circle" size={22} color={Colors.secondary} />
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.couponRow}>
-            <Ionicons name="gift-outline" size={20} color={Colors.secondary} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.couponInput}
-              placeholder="Nhập mã giảm giá..."
-              placeholderTextColor={Colors.secondary}
-              value={voucherCode}
-              onChangeText={t => { setVoucherCode(t.toUpperCase()); setVoucherError(''); }}
-              autoCapitalize="characters"
-            />
-            <TouchableOpacity
-              style={[styles.couponBtn, !voucherCode.trim() && { opacity: 0.5 }]}
-              onPress={applyVoucher}
-              disabled={!voucherCode.trim() || voucherLoading}
-            >
-              {voucherLoading
-                ? <ActivityIndicator size="small" color={Colors.white} />
-                : <Text style={styles.couponBtnText}>Áp dụng</Text>
-              }
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.couponTrigger} onPress={() => setPickerVisible(true)} activeOpacity={0.75}>
+            <View style={styles.couponTriggerLeft}>
+              <Ionicons name="gift-outline" size={20} color={Colors.blue} style={{ marginRight: 10 }} />
+              <Text style={styles.couponTriggerText}>Chọn hoặc nhập mã giảm giá</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.secondary} />
+          </TouchableOpacity>
         )}
-        {voucherError ? (
-          <Text style={styles.couponError}>{voucherError}</Text>
-        ) : null}
 
         {/* ── Bảng giá ── */}
         <View style={styles.card}>
@@ -268,15 +322,88 @@ export default function SendStep4() {
           variant="success"
         />
       </View>
+
+      {/* ── Voucher Picker Modal ── */}
+      <Modal
+        visible={pickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { paddingBottom: insets.bottom + 24 }]}>
+            {/* Modal header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Mã giảm giá</Text>
+              <TouchableOpacity onPress={() => setPickerVisible(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={22} color={Colors.dark} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Manual input */}
+            <View style={styles.manualRow}>
+              <View style={[styles.manualInputWrap, manualError ? { borderColor: Colors.error } : null]}>
+                <Ionicons name="ticket-outline" size={18} color={Colors.secondary} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.manualInput}
+                  placeholder="Nhập mã thủ công..."
+                  placeholderTextColor={Colors.placeholder}
+                  value={manualCode}
+                  onChangeText={t => { setManualCode(t.toUpperCase()); setManualError(''); }}
+                  autoCapitalize="characters"
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.manualApplyBtn, (!manualCode.trim() || manualLoading) && { opacity: 0.5 }]}
+                onPress={applyManual}
+                disabled={!manualCode.trim() || manualLoading}
+              >
+                {manualLoading
+                  ? <ActivityIndicator size="small" color={Colors.white} />
+                  : <Text style={styles.manualApplyText}>Áp dụng</Text>
+                }
+              </TouchableOpacity>
+            </View>
+            {manualError ? <Text style={styles.manualError}>{manualError}</Text> : null}
+
+            {/* Divider */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>Hoặc chọn từ danh sách</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Voucher list */}
+            {vouchersLoading ? (
+              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                <ActivityIndicator color={Colors.blue} />
+                <Text style={{ ...Typography.small, color: Colors.secondary, marginTop: 10 }}>Đang tải voucher...</Text>
+              </View>
+            ) : availableVouchers.length === 0 ? (
+              <View style={styles.emptyVoucher}>
+                <Ionicons name="gift-outline" size={40} color={Colors.border} />
+                <Text style={styles.emptyVoucherText}>Bạn chưa có voucher nào</Text>
+                <Text style={styles.emptyVoucherSub}>Nhập mã thủ công ở trên nếu đã có mã</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={availableVouchers}
+                keyExtractor={(v: any) => v.id}
+                renderItem={renderVoucherCard}
+                style={{ maxHeight: 340 }}
+                contentContainerStyle={{ gap: 10 }}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  tripSummaryCard: {
-    borderRadius: Layout.radiusLg,
-    padding: Layout.cardPadding, marginBottom: 10, ...Shadow.blue,
-  },
+  tripSummaryCard: { borderRadius: Layout.radiusLg, padding: Layout.cardPadding, marginBottom: 10, ...Shadow.blue },
   tripHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   tripLabel: { ...Typography.bodyBold, color: Colors.white },
   editBtn: { ...Typography.bodyBold, color: Colors.blueLight },
@@ -294,25 +421,23 @@ const styles = StyleSheet.create({
   infoLabel: { ...Typography.small, color: Colors.secondary, width: 60 },
   infoValue: { ...Typography.body, color: Colors.dark, flex: 1, textAlign: 'right' },
 
-  couponRow: {
-    flexDirection: 'row', alignItems: 'center',
+  couponTrigger: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: Colors.white, borderRadius: Layout.radiusLg,
-    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4,
-    borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.border,
+    padding: 14, marginBottom: 10,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: Colors.blue,
+    ...Shadow.md,
   },
-  couponInput: { ...Typography.body, color: Colors.dark, flex: 1, paddingVertical: 4 },
-  couponBtn: {
-    backgroundColor: Colors.blue, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 8,
-  },
-  couponBtnText: { ...Typography.smallBold, color: Colors.white },
-  couponError: { ...Typography.small, color: Colors.error ?? '#EF4444', marginBottom: 10, paddingHorizontal: 4 },
+  couponTriggerLeft: { flexDirection: 'row', alignItems: 'center' },
+  couponTriggerText: { ...Typography.body, color: Colors.blue },
+
   couponApplied: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.successBg ?? '#F0FDF4', borderRadius: Layout.radiusLg,
-    padding: 14, marginBottom: 4,
-    borderWidth: 1.5, borderColor: Colors.success,
+    backgroundColor: Colors.successBg, borderRadius: Layout.radiusLg,
+    padding: 14, marginBottom: 10,
+    borderWidth: 1.5, borderColor: Colors.success, ...Shadow.md,
   },
+  couponAppliedIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.success + '20', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   couponAppliedCode: { ...Typography.bodyBold, color: Colors.success },
   couponAppliedSave: { ...Typography.small, color: Colors.success, marginTop: 2 },
   couponMeta: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4, gap: 2 },
@@ -343,4 +468,57 @@ const styles = StyleSheet.create({
   secureText: { ...Typography.small, color: Colors.success },
 
   footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalBox: {
+    backgroundColor: Colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingTop: 16,
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  modalTitle: { ...Typography.h4, color: Colors.dark },
+  modalCloseBtn: { padding: 4 },
+
+  manualRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
+  manualInputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Layout.radius,
+    paddingHorizontal: 12, height: 48,
+  },
+  manualInput: { flex: 1, ...Typography.body, color: Colors.dark },
+  manualApplyBtn: {
+    backgroundColor: Colors.blue, borderRadius: Layout.radius,
+    paddingHorizontal: 16, height: 48, alignItems: 'center', justifyContent: 'center',
+  },
+  manualApplyText: { ...Typography.smallBold, color: Colors.white },
+  manualError: { ...Typography.small, color: Colors.error, marginBottom: 8 },
+
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 14, gap: 8 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText: { ...Typography.caption, color: Colors.secondary },
+
+  voucherCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.bg, borderRadius: Layout.radius,
+    padding: 14, borderWidth: 1, borderColor: Colors.border,
+  },
+  voucherCardLeft: { flex: 1, marginRight: 12 },
+  voucherCodeBadge: {
+    alignSelf: 'flex-start', backgroundColor: Colors.infoBg,
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6,
+    borderWidth: 1, borderColor: Colors.blue + '40',
+  },
+  voucherCardCode: { ...Typography.smallBold, color: Colors.blue, letterSpacing: 0.5 },
+  voucherCardDiscount: { ...Typography.bodyBold, color: Colors.dark },
+  voucherCardMeta: { ...Typography.caption, color: Colors.secondary },
+  voucherSelectBtn: {
+    backgroundColor: Colors.blue, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8, minWidth: 60, alignItems: 'center',
+  },
+  voucherSelectBtnApplied: { backgroundColor: Colors.success },
+  voucherSelectBtnText: { ...Typography.smallBold, color: Colors.white },
+
+  emptyVoucher: { alignItems: 'center', paddingVertical: 32 },
+  emptyVoucherText: { ...Typography.bodyBold, color: Colors.dark, marginTop: 12 },
+  emptyVoucherSub: { ...Typography.small, color: Colors.secondary, marginTop: 6 },
 });

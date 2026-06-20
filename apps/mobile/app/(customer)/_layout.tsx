@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useRouteNode } from 'expo-router/build/Route';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@constants/Colors';
@@ -6,16 +7,18 @@ import { useOrderStore } from '@store/order.store';
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
-function TabIcon({ name, focused, color }: { name: IoniconsName; focused: boolean; color: string }) {
+function TabIcon({ name, nameOutline, focused, color }: { name: IoniconsName; nameOutline: IoniconsName; focused: boolean; color: string }) {
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-      <Ionicons name={focused ? name : `${name}-outline` as IoniconsName} size={22} color={color} />
+      <Ionicons name={focused ? name : nameOutline} size={22} color={color} />
     </View>
   );
 }
 
 export default function CustomerLayout() {
   const resetDraft = useOrderStore((s) => s.resetDraft);
+  const node = useRouteNode();
+  console.log('[TAB ROUTES]', node?.children?.map((c) => c.route));
 
   return (
     <Tabs
@@ -32,14 +35,14 @@ export default function CustomerLayout() {
         name="index"
         options={{
           title: 'Trang chủ',
-          tabBarIcon: ({ focused, color }) => <TabIcon name="home" focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="home" nameOutline="home-outline" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="send"
         options={{
           title: 'Gửi hàng',
-          tabBarIcon: ({ focused, color }) => <TabIcon name="cube" focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="cube" nameOutline="cube-outline" focused={focused} color={color} />,
         }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
@@ -53,22 +56,28 @@ export default function CustomerLayout() {
         name="orders"
         options={{
           title: 'Đơn hàng',
-          tabBarIcon: ({ focused, color }) => <TabIcon name="list" focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="list" nameOutline="list-outline" focused={focused} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="support"
+        options={{
+          title: 'Hỗ trợ',
+          tabBarIcon: ({ focused, color }) => <TabIcon name="headset" nameOutline="headset-outline" focused={focused} color={color} />,
         }}
       />
       <Tabs.Screen
         name="account"
         options={{
           title: 'Tài khoản',
-          tabBarIcon: ({ focused, color }) => <TabIcon name="person" focused={focused} color={color} />,
+          tabBarIcon: ({ focused, color }) => <TabIcon name="person" nameOutline="person-outline" focused={focused} color={color} />,
         }}
       />
-      {/* Hidden from tabs */}
+      {/* Hidden screens — registered here so Tabs knows about them but they're stack-pushed from root */}
       <Tabs.Screen name="home" options={{ href: null }} />
-      <Tabs.Screen name="notifications" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null, unmountOnBlur: false }} />
       <Tabs.Screen name="payment" options={{ href: null }} />
       <Tabs.Screen name="success" options={{ href: null }} />
-      <Tabs.Screen name="orders/[id]" options={{ href: null }} />
       <Tabs.Screen name="profile-edit" options={{ href: null }} />
       <Tabs.Screen name="saved-addresses" options={{ href: null }} />
       <Tabs.Screen name="my-vouchers" options={{ href: null }} />

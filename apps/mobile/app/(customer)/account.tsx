@@ -3,7 +3,10 @@ import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@store/auth.store';
+import { ordersApi } from '@services/orders.api';
+import { vouchersApi } from '@services/vouchers.api';
 import { Colors } from '@constants/Colors';
 import { Typography, Layout, Shadow } from '@constants/Layout';
 
@@ -22,22 +25,39 @@ const MENU_GROUPS = [
     title: 'Ưu đãi & Thanh toán',
     items: [
       { icon: 'pricetag-outline' as IoniconsName, label: 'Mã giảm giá của tôi', route: '/(customer)/my-vouchers', color: Colors.success },
-      { icon: 'card-outline' as IoniconsName, label: 'Phương thức thanh toán', route: null, color: '#F97316' },
       { icon: 'time-outline' as IoniconsName, label: 'Lịch sử đơn hàng', route: '/(customer)/orders', color: Colors.blue },
     ],
   },
   {
     title: 'Khác',
     items: [
-      { icon: 'headset-outline' as IoniconsName, label: 'Hỗ trợ & Liên hệ', route: null, color: '#10B981' },
+      { icon: 'headset-outline' as IoniconsName, label: 'Hỗ trợ & Liên hệ', route: '/(customer)/support', color: '#10B981' },
       { icon: 'document-text-outline' as IoniconsName, label: 'Điều khoản sử dụng', route: '/(customer)/terms', color: Colors.secondary },
     ],
   },
 ];
 
+const ACTIVE_STATUSES = ['CONFIRMED', 'PICKING_UP', 'AT_STATION', 'IN_TRANSIT', 'ARRIVED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuthStore();
+
+  const { data: allOrders = [] } = useQuery({
+    queryKey: ['orders', ''],
+    queryFn: () => ordersApi.getMyOrders(),
+    staleTime: 30_000,
+  });
+
+  const { data: vouchers = [] } = useQuery({
+    queryKey: ['vouchers-active'],
+    queryFn: vouchersApi.getActive,
+    staleTime: 60_000,
+  });
+
+  const activeOrderCount = (allOrders as any[]).filter((o) => ACTIVE_STATUSES.includes(o.status)).length;
+  const voucherCount = (vouchers as any[]).length;
+  const avgRating = user?.rating ?? 5.0;
 
   const onLogout = () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
@@ -47,6 +67,12 @@ export default function AccountScreen() {
   };
 
   const initials = user?.fullName?.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2) ?? '?';
+
+  const stats = [
+    { icon: 'cube-outline' as IoniconsName, value: String(activeOrderCount), label: 'Đơn gửi', color: Colors.blue },
+    { icon: 'star-outline' as IoniconsName, value: avgRating.toFixed(1), label: 'Đánh giá', color: '#F59E0B' },
+    { icon: 'pricetag-outline' as IoniconsName, value: String(voucherCount), label: 'Voucher', color: Colors.success },
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -64,19 +90,11 @@ export default function AccountScreen() {
           </View>
           <Text style={styles.name}>{user?.fullName}</Text>
           <Text style={styles.phone}>{user?.phone}</Text>
-          <View style={styles.editBtn}>
-            <Ionicons name="pencil-outline" size={14} color={Colors.white} style={{ marginRight: 5 }} />
-            <Text style={styles.editText}>Chỉnh sửa hồ sơ</Text>
-          </View>
         </LinearGradient>
 
         {/* Quick stats */}
         <View style={styles.statsCard}>
-          {[
-            { icon: 'cube-outline' as IoniconsName, value: '0', label: 'Đơn gửi', color: Colors.blue },
-            { icon: 'star-outline' as IoniconsName, value: '5.0', label: 'Đánh giá', color: '#F59E0B' },
-            { icon: 'pricetag-outline' as IoniconsName, value: '0', label: 'Voucher', color: Colors.success },
-          ].map(({ icon, value, label, color }) => (
+          {stats.map(({ icon, value, label, color }) => (
             <View key={label} style={styles.statItem}>
               <View style={[styles.statIconWrap, { backgroundColor: `${color}1A` }]}>
                 <Ionicons name={icon} size={18} color={color} />
@@ -128,9 +146,7 @@ const styles = StyleSheet.create({
   avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 32, color: Colors.white, fontWeight: '700' },
   name: { ...Typography.h3, color: Colors.white, marginBottom: 4 },
-  phone: { ...Typography.body, color: 'rgba(255,255,255,0.65)', marginBottom: 14 },
-  editBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
-  editText: { ...Typography.caption, color: Colors.white, fontWeight: '600' },
+  phone: { ...Typography.body, color: 'rgba(255,255,255,0.65)' },
 
   statsCard: {
     flexDirection: 'row', backgroundColor: Colors.white,

@@ -20,13 +20,11 @@ const CANCEL_REASONS = [
   'Lý do khác',
 ];
 
-const CITY_CODE: Record<string, string> = {
-  'Hà Nội': 'HAN', 'TP.HCM': 'SGN', 'Đà Nẵng': 'DAD',
-  'Nghệ An': 'VII', 'Huế': 'HUI', 'Nha Trang': 'NHA',
-  'Cần Thơ': 'VCA', 'Hải Phòng': 'HPH',
+const cityCode = (c: string) => {
+  if (!c) return '???';
+  if (c === 'TP.HCM' || c === 'Hồ Chí Minh') return 'HCM';
+  return c.split(' ').map(w => w[0]).join('').toUpperCase();
 };
-const cityCode = (c: string) =>
-  CITY_CODE[c] ?? c?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 3) ?? '???';
 
 const STATUS_PROGRESS: Record<string, number> = {
   PENDING: 2, CONFIRMED: 10, PICKING_UP: 20,
@@ -83,9 +81,10 @@ export default function OrderDetailScreen() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedReason, setSelectedReason] = useState('');
 
-  const { data: order, isLoading } = useQuery({
+  const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', id],
     queryFn: () => ordersApi.getOrder(id),
+    retry: false,
     refetchInterval: (q) => {
       const o = q.state.data as any;
       return !o || ['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status) ? false : 10_000;
@@ -105,10 +104,30 @@ export default function OrderDetailScreen() {
     onError: () => Alert.alert('Lỗi', 'Không thể hủy đơn. Vui lòng thử lại.'),
   });
 
-  if (isLoading || !order) {
+  if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg }}>
         <ActivityIndicator color={Colors.blue} size="large" />
+      </View>
+    );
+  }
+
+  if (isError || !order) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg, padding: 32 }}>
+        <Ionicons name="search-outline" size={56} color={Colors.border} />
+        <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.primary, marginTop: 16, textAlign: 'center' }}>
+          Không tìm thấy đơn hàng
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.secondary, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+          Mã vận đơn "{id}" không tồn tại hoặc đã bị xóa.{'\n'}Kiểm tra lại mã và thử lại.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ marginTop: 24, backgroundColor: Colors.blue, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 12 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Quay lại</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -233,7 +252,8 @@ export default function OrderDetailScreen() {
           <Text style={styles.cardTitle}>Chi tiết đơn hàng</Text>
           {[
             { label: 'Mã vận đơn', value: order.trackingCode },
-            { label: 'Trọng lượng', value: WEIGHT_LABEL[order.weightRange] ?? order.weightRange },
+            { label: 'Xe vận chuyển', value: order.assignedDriver?.vehiclePlate ?? order.trip?.driver?.vehiclePlate ?? '—' },
+            { label: 'Trọng lượng', value: order.actualWeightKg ? `${order.actualWeightKg}kg` : (WEIGHT_LABEL[order.weightRange] ?? order.weightRange) },
             { label: 'Người gửi', value: `${order.senderName} · ${order.senderPhone}` },
             { label: 'Người nhận', value: `${order.receiverName} · ${order.receiverPhone}` },
             { label: 'Địa chỉ giao', value: order.receiverAddress ?? 'Tự đến bến lấy' },
@@ -285,9 +305,28 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {['PENDING', 'CONFIRMED'].includes(order.status) && (
+        {order.status === 'PENDING' && (
           <View style={styles.actionsWrap}>
             <Button label="Hủy đơn hàng" onPress={() => { setSelectedReason(''); setShowCancelModal(true); }} variant="danger" />
+          </View>
+        )}
+
+        {order.status === 'CONFIRMED' && (
+          <View style={styles.actionsWrap}>
+            <Button
+              label="Hủy đơn hàng"
+              variant="danger"
+              onPress={() =>
+                Alert.alert(
+                  'Không thể hủy đơn',
+                  'Nhà xe đã xác nhận đơn hàng của bạn. Đơn hàng không thể hủy tại thời điểm này.\n\nNếu cần hỗ trợ, vui lòng liên hệ nhà xe hoặc bộ phận chăm sóc khách hàng.',
+                  [
+                    { text: 'Liên hệ hỗ trợ', onPress: () => router.push('/(customer)/support' as any) },
+                    { text: 'Đóng', style: 'cancel' },
+                  ]
+                )
+              }
+            />
           </View>
         )}
       </ScrollView>

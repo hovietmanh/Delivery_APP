@@ -1,6 +1,6 @@
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, TextInput, Modal, FlatList,
+  StyleSheet, TextInput, Modal, FlatList, Alert,
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -94,11 +94,12 @@ export default function SendStep1() {
   };
 
   const handleWeightInput = (text: string) => {
-    setWeightInput(text);
-    const kg = parseFloat(text);
+    const normalized = text.replace(',', '.');
+    setWeightInput(normalized);
+    const kg = parseFloat(normalized);
     if (!isNaN(kg) && kg > 0) {
       updateDraft({ weightKg: kg, weightRange: rangeFromKg(kg) as any });
-    } else if (text === '') {
+    } else if (normalized === '') {
       updateDraft({ weightKg: undefined as any });
     }
   };
@@ -119,6 +120,31 @@ export default function SendStep1() {
     && draft.weightRange && draft.weightKg && draft.weightKg > 0
     && draft.serviceType
   );
+
+  const getMissingFields = () => {
+    const missing: string[] = [];
+    if (!draft.fromCity || !draft.fromStation) missing.push('Điểm lấy hàng (Bến gửi)');
+    if (!draft.toCity || !draft.toStation) missing.push('Điểm nhận hàng (Bến đến)');
+    if (draft.fromCity && draft.toCity && draft.fromCity === draft.toCity) missing.push('Điểm gửi và điểm nhận phải khác nhau');
+    if (!draft.serviceType) missing.push('Dịch vụ giao hàng');
+    if (!draft.goodsType) missing.push('Loại hàng hóa');
+    if (draft.goodsType === 'OTHER' && !draft.goodsDescription?.trim()) missing.push('Mô tả loại hàng hóa (vì chọn "Khác")');
+    if (!draft.weightKg || draft.weightKg <= 0) missing.push('Trọng lượng hàng hóa');
+    return missing;
+  };
+
+  const handleNext = () => {
+    if (!canProceed) {
+      const missing = getMissingFields();
+      Alert.alert(
+        'Chưa điền đủ thông tin',
+        'Vui lòng bổ sung:\n\n• ' + missing.join('\n• '),
+        [{ text: 'Đã hiểu' }],
+      );
+      return;
+    }
+    router.push('/(customer)/send/trip');
+  };
 
   const openPicker = (target: PickerTarget) => {
     setPickerTarget(target);
@@ -301,11 +327,21 @@ export default function SendStep1() {
 
       {/* ── Footer ── */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <Button
-          label="Tiếp theo — Chọn xe →"
-          onPress={() => router.push('/(customer)/send/trip')}
-          disabled={!canProceed}
-        />
+        <TouchableOpacity
+          style={[styles.nextBtn, canProceed ? styles.nextBtnReady : styles.nextBtnDisabled]}
+          onPress={handleNext}
+          activeOpacity={0.85}
+        >
+          <Ionicons
+            name={canProceed ? 'arrow-forward-circle-outline' : 'lock-closed-outline'}
+            size={20}
+            color={canProceed ? Colors.white : Colors.secondary}
+            style={{ marginRight: 8 }}
+          />
+          <Text style={[styles.nextBtnText, !canProceed && styles.nextBtnTextDisabled]}>
+            Tiếp theo — Chọn xe
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── 2-step picker Modal ── */}
@@ -459,6 +495,11 @@ const styles = StyleSheet.create({
   weightResultText: { ...Typography.small, color: Colors.success },
 
   footer: { padding: Layout.padding, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.border, ...Shadow.md },
+  nextBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: Layout.buttonHeight, borderRadius: Layout.radius },
+  nextBtnReady: { backgroundColor: Colors.blue, ...Shadow.blue },
+  nextBtnDisabled: { backgroundColor: Colors.bg, borderWidth: 1.5, borderColor: Colors.border },
+  nextBtnText: { ...Typography.bodyBold, color: Colors.white },
+  nextBtnTextDisabled: { color: Colors.secondary },
 
   // Modal styles
   modalContainer: { flex: 1, backgroundColor: Colors.bg },
