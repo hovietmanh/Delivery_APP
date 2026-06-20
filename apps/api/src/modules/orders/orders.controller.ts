@@ -109,4 +109,20 @@ export class OrdersController {
   confirmTransfer(@Param('id') id: string, @Request() req: any) {
     return this.ordersService.confirmTransfer(req.user.id, id);
   }
+
+  @Patch(':id/deliver')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Driver confirms delivery after scanning QR code' })
+  deliver(@Param('id') id: string, @Request() req: any, @Body() body: { note?: string }) {
+    return this.ordersService.updateStatus(id, 'DELIVERED' as any, {
+      driverId: req.user.id,
+      note: body?.note,
+    });
+  }
+
+  @Get(':id/qr')
+  @ApiOperation({ summary: 'Get QR deep link data for an order' })
+  getQrData(@Param('id') id: string) {
+    return this.ordersService.getQrData(id);
+  }
 }

@@ -209,11 +209,28 @@ model Trip {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  route   Route   @relation(fields: [routeId], references: [id])
-  driver  Driver  @relation(fields: [driverId], references: [id])
-  orders  Order[]
+  route             Route             @relation(fields: [routeId], references: [id])
+  driver            Driver            @relation(fields: [driverId], references: [id])
+  orders            Order[]
+  locationHistory   DriverLocation[]
 
   @@map("trips")
+}
+
+model DriverLocation {
+  id        String   @id @default(cuid())
+  tripId    String
+  driverId  String
+  latitude  Float
+  longitude Float
+  speed     Float?   // km/h
+  heading   Float?   // độ (0–360)
+  timestamp DateTime @default(now())
+
+  trip   Trip   @relation(fields: [tripId], references: [id])
+
+  @@index([tripId, timestamp])
+  @@map("driver_locations")
 }
 
 model Order {

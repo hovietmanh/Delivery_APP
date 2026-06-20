@@ -64,6 +64,7 @@ export default function DriverLayout() {
       <Tabs.Screen name="order/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       <Tabs.Screen name="pickup/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
       <Tabs.Screen name="deliver/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="qr-scan" options={{ href: null, tabBarStyle: { display: 'none' } }} />
     </Tabs>
   );
 }

@@ -4,7 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useRef } from 'react';
+import * as Location from 'expo-location';
 import { driverApi } from '@services/driver.api';
+import { getTrackingSocket, disconnectSocket } from '@services/socket';
 import { Badge } from '@components/ui/Badge';
 import { Colors } from '@constants/Colors';
 import { Typography, Layout, Shadow } from '@constants/Layout';
@@ -64,6 +67,51 @@ export default function TripScreen() {
     },
     onError: (e: any) => Alert.alert('Không thể hoàn tất', e?.response?.data?.message ?? 'Vui lòng thử lại'),
   });
+
+  // GPS tracking — chỉ chạy khi trip đang IN_TRANSIT
+  const locationSub = useRef<Location.LocationSubscription | null>(null);
+
+  useEffect(() => {
+    if (trip?.status !== 'IN_TRANSIT' || !trip?.id) return;
+
+    let active = true;
+
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted' || !active) return;
+
+      const socket = getTrackingSocket();
+
+      locationSub.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 5000,   // emit mỗi 5 giây
+          distanceInterval: 20, // hoặc mỗi 20m
+        },
+        (loc) => {
+          socket.emit('driver:update_location', {
+            tripId: trip.id,
+            driverId: trip.driverId,
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            speed: loc.coords.speed ? loc.coords.speed * 3.6 : undefined, // m/s → km/h
+            heading: loc.coords.heading ?? undefined,
+          });
+        },
+      );
+    })();
+
+    return () => {
+      active = false;
+      locationSub.current?.remove();
+      locationSub.current = null;
+    };
+  }, [trip?.status, trip?.id]);
+
+  // Dọn socket khi unmount
+  useEffect(() => {
+    return () => { disconnectSocket(); };
+  }, []);
 
   const onCompleteTrip = () => {
     Alert.alert(
@@ -295,22 +343,35 @@ export default function TripScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        {/* Complete trip button */}
+        {/* Nút QR + Hoàn tất chuyến — chỉ hiện khi trip ARRIVED */}
         {trip.status === 'ARRIVED' && (() => {
           const allDone = (trip.orders ?? []).every((o: any) =>
             ['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status),
           );
           return (
-            <TouchableOpacity
-              style={[styles.completeBtn, !allDone && styles.completeBtnDisabled]}
-              onPress={allDone ? onCompleteTrip : () => Alert.alert('Chưa thể hoàn tất', 'Vẫn còn đơn hàng chưa được giao xong.')}
-              disabled={completeTrip.isPending}
-            >
-              <Ionicons name={allDone ? 'checkmark-circle' : 'lock-closed-outline'} size={22} color={Colors.white} style={{ marginRight: 8 }} />
-              <Text style={styles.completeBtnText}>
-                {completeTrip.isPending ? 'Đang xử lý...' : allDone ? 'Hoàn tất chuyến xe & Reset xe' : `Còn ${(trip.orders ?? []).filter((o: any) => !['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status)).length} đơn chưa giao`}
-              </Text>
-            </TouchableOpacity>
+            <>
+              {/* QR scan — đặt trên nút hoàn tất */}
+              <TouchableOpacity
+                style={styles.qrFab}
+                onPress={() => router.push('/(driver)/qr-scan' as any)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="qr-code-outline" size={22} color="#fff" />
+                <Text style={styles.qrFabText}>Quét QR giao hàng</Text>
+              </TouchableOpacity>
+
+              {/* Hoàn tất chuyến */}
+              <TouchableOpacity
+                style={[styles.completeBtn, !allDone && styles.completeBtnDisabled]}
+                onPress={allDone ? onCompleteTrip : () => Alert.alert('Chưa thể hoàn tất', 'Vẫn còn đơn hàng chưa được giao xong.')}
+                disabled={completeTrip.isPending}
+              >
+                <Ionicons name={allDone ? 'checkmark-circle' : 'lock-closed-outline'} size={22} color={Colors.white} style={{ marginRight: 8 }} />
+                <Text style={styles.completeBtnText}>
+                  {completeTrip.isPending ? 'Đang xử lý...' : allDone ? 'Hoàn tất chuyến xe & Reset xe' : `Còn ${(trip.orders ?? []).filter((o: any) => !['DELIVERED', 'CANCELLED', 'DISPUTED'].includes(o.status)).length} đơn chưa giao`}
+                </Text>
+              </TouchableOpacity>
+            </>
           );
         })()}
       </ScrollView>
@@ -370,6 +431,13 @@ const styles = StyleSheet.create({
   completeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.success, borderRadius: Layout.radiusLg, padding: 16, marginBottom: 12, ...Shadow.md },
   completeBtnDisabled: { backgroundColor: Colors.secondary },
   completeBtnText: { ...Typography.bodyBold, color: Colors.white },
+
+  qrFab: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: Colors.primary, borderRadius: 16,
+    paddingVertical: 15, marginBottom: 10, ...Shadow.blue,
+  },
+  qrFabText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 
   noTrip: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   emptyIconWrap: { width: 80, height: 80, borderRadius: 24, backgroundColor: 'rgba(96,165,250,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },

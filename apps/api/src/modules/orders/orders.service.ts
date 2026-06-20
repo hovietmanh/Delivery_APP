@@ -629,6 +629,26 @@ export class OrdersService {
     return { total, todayOrders, inTransit, delivered, revenue: revenue._sum.total ?? 0 };
   }
 
+  async getQrData(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        trackingCode: true,
+        status: true,
+        receiverName: true,
+        receiverPhone: true,
+        receiverAddress: true,
+        goodsDescription: true,
+      },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    return {
+      ...order,
+      deepLink: `delilog://orders/${order.id}`,
+    };
+  }
+
   private async generateTrackingCode(): Promise<string> {
     const now = new Date();
     const yy = String(now.getFullYear()).slice(2);

@@ -1,14 +1,18 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, Alert, ActivityIndicator, Image, Dimensions, PanResponder, Animated } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ordersApi } from '@services/orders.api';
+import { getTrackingSocket } from '@services/socket';
 import { Colors } from '@constants/Colors';
 import { Typography, Layout, Shadow } from '@constants/Layout';
 import { Button } from '@components/ui/Button';
+import QRCode from 'react-native-qrcode-svg';
+import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
 
 const CANCEL_REASONS = [
   'Đặt nhầm đơn hàng',
@@ -74,11 +78,168 @@ function formatDate(d?: string) {
   return new Date(d).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 }
 
+// ── OSM tile map — smooth pan (Animated GPU) + zoom + reverse geocoding ────
+const SCREEN_W = Dimensions.get('window').width;
+const MAP_W    = SCREEN_W - 32;
+const MAP_H    = 240;
+const TILE_SZ  = Math.round(MAP_W / 3); // tile vuông = OSM 256×256
+const SCALE    = TILE_SZ / 256;
+const EXT      = 2; // render 5×5 tile buffer để pan mượt
+
+function worldPx(lat: number, lng: number, zoom: number) {
+  const n    = Math.pow(2, zoom) * 256;
+  const x    = ((lng + 180) / 360) * n;
+  const latR = (lat * Math.PI) / 180;
+  const y    = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * n;
+  return { x, y };
+}
+
+// Memoized tile image để tránh re-render không cần thiết
+const TileImage = memo(({ uri, left, top }: { uri: string; left: number; top: number }) => (
+  <Image
+    source={{ uri }}
+    fadeDuration={0}
+    style={{ position: 'absolute', left, top, width: TILE_SZ, height: TILE_SZ }}
+  />
+));
+
+function OsmMap({ latitude, longitude }: { latitude: number; longitude: number }) {
+  const [zoom, setZoom]           = useState(14);
+  const [committed, setCommitted] = useState({ x: 0, y: 0 });
+  const animPan  = useRef(new Animated.ValueXY()).current;
+  const panBase  = useRef({ x: 0, y: 0 });
+
+  // Animated.event → pan chạy trên UI thread, không block JS
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder:  () => true,
+    onPanResponderMove: Animated.event(
+      [null, { dx: animPan.x, dy: animPan.y }],
+      { useNativeDriver: false },
+    ),
+    onPanResponderRelease: (_, g) => {
+      const nx = panBase.current.x + g.dx;
+      const ny = panBase.current.y + g.dy;
+      panBase.current = { x: nx, y: ny };
+      animPan.setValue({ x: 0, y: 0 }); // reset animation, tile grid đã ở đúng vị trí
+      setCommitted({ x: nx, y: ny });   // reload tiles ở center mới
+    },
+  })).current;
+
+  const dwp = useMemo(() => worldPx(latitude, longitude, zoom), [latitude, longitude, zoom]);
+
+  // Tâm view trong world-px (dịch bởi committed pan)
+  const vcX  = dwp.x - committed.x / SCALE;
+  const vcY  = dwp.y - committed.y / SCALE;
+  const ctX  = Math.floor(vcX / 256);
+  const ctY  = Math.floor(vcY / 256);
+  const subX = (vcX / 256 - ctX) * TILE_SZ;
+  const subY = (vcY / 256 - ctY) * TILE_SZ;
+
+  const tiles = useMemo(() => {
+    const out = [];
+    for (let dy = -EXT; dy <= EXT; dy++)
+      for (let dx = -EXT; dx <= EXT; dx++)
+        out.push({
+          key:  `${zoom}-${ctX + dx}-${ctY + dy}`,
+          uri:  `https://tile.openstreetmap.org/${zoom}/${ctX + dx}/${ctY + dy}.png`,
+          left: MAP_W / 2 + committed.x + dx * TILE_SZ - subX,
+          top:  MAP_H / 2 + committed.y + dy * TILE_SZ - subY,
+        });
+    return out;
+  }, [zoom, ctX, ctY, subX, subY, committed]);
+
+  const markerLeft = MAP_W / 2 + committed.x - 14;
+  const markerTop  = MAP_H / 2 + committed.y - 30;
+
+  const resetPan = () => {
+    panBase.current = { x: 0, y: 0 };
+    animPan.setValue({ x: 0, y: 0 });
+    setCommitted({ x: 0, y: 0 });
+  };
+
+  const handleZoom = (d: number) => {
+    setZoom(z => Math.min(18, Math.max(3, z + d)));
+    resetPan();
+  };
+
+  const isFollowing = committed.x === 0 && committed.y === 0;
+
+  return (
+    <View
+      style={{ width: MAP_W, height: MAP_H, borderRadius: 12, overflow: 'hidden', backgroundColor: '#d1d5db' }}
+      {...panResponder.panHandlers}
+    >
+      {/* Canvas animated — toàn bộ tiles + marker translate cùng 1 lúc (GPU) */}
+      <Animated.View style={{ transform: [{ translateX: animPan.x }, { translateY: animPan.y }] }}>
+        {tiles.map(t => <TileImage key={t.key} uri={t.uri} left={t.left} top={t.top} />)}
+        <View style={{ position: 'absolute', left: markerLeft, top: markerTop, alignItems: 'center' }}>
+          <View style={mapStyles.markerBubble}><Ionicons name="bus" size={14} color="#fff" /></View>
+          <View style={mapStyles.markerTail} />
+        </View>
+      </Animated.View>
+
+      {/* Controls cố định trên màn hình (ngoài Animated canvas) */}
+      {!isFollowing && (
+        <TouchableOpacity style={mapStyles.centerBtn} onPress={resetPan} activeOpacity={0.85}>
+          <Ionicons name="locate" size={16} color={Colors.primary} />
+        </TouchableOpacity>
+      )}
+      <View style={mapStyles.zoomControls}>
+        <TouchableOpacity style={mapStyles.zoomBtn} onPress={() => handleZoom(1)} activeOpacity={0.8}>
+          <Text style={mapStyles.zoomBtnText}>+</Text>
+        </TouchableOpacity>
+        <View style={mapStyles.zoomDivider} />
+        <TouchableOpacity style={mapStyles.zoomBtn} onPress={() => handleZoom(-1)} activeOpacity={0.8}>
+          <Text style={mapStyles.zoomBtnText}>−</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={mapStyles.zoomBadge}>
+        <Text style={mapStyles.zoomBadgeText}>z{zoom}</Text>
+      </View>
+    </View>
+  );
+}
+
 export default function OrderDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [savingQr, setSavingQr] = useState(false);
+  const qrRef = useRef<any>(null);
+
+  const downloadQr = async () => {
+    if (!qrRef.current) return;
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      Alert.alert('Không hỗ trợ', 'Thiết bị không hỗ trợ chia sẻ file.');
+      return;
+    }
+    setSavingQr(true);
+    qrRef.current.toDataURL(async (dataUrl: string) => {
+      try {
+        const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const file = new File(Paths.cache, `qr-${order?.trackingCode ?? 'order'}.png`);
+        file.create({ overwrite: true });
+        file.write(bytes);
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'image/png',
+          dialogTitle: `QR đơn hàng ${order?.trackingCode}`,
+          UTI: 'public.png',
+        });
+      } catch (e) {
+        console.error('QR share error:', e);
+        Alert.alert('Lỗi', 'Không thể chia sẻ ảnh. Vui lòng thử lại.');
+      } finally {
+        setSavingQr(false);
+      }
+    });
+  };
   const [selectedReason, setSelectedReason] = useState('');
 
   const { data: order, isLoading, isError } = useQuery({
@@ -103,6 +264,61 @@ export default function OrderDetailScreen() {
     },
     onError: () => Alert.alert('Lỗi', 'Không thể hủy đơn. Vui lòng thử lại.'),
   });
+
+  // GPS tracking — subscribe khi đơn đang vận chuyển
+  const [driverLocation, setDriverLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    speed?: number;
+    heading?: number;
+    timestamp?: Date;
+  } | null>(null);
+
+  const tripId = (order as any)?.tripId;
+  const isInTransit = ['IN_TRANSIT', 'OUT_FOR_DELIVERY', 'ARRIVED'].includes((order as any)?.status);
+
+  // Reverse geocoding — gọi Nominatim khi vị trí đổi đáng kể (~500m)
+  const [geoAddress, setGeoAddress] = useState('Đang xác định vị trí...');
+  const lastGeocoded = useRef({ lat: 0, lng: 0 });
+
+  useEffect(() => {
+    if (!driverLocation) return;
+    const { latitude: lat, longitude: lng } = driverLocation;
+    if (
+      Math.abs(lat - lastGeocoded.current.lat) < 0.005 &&
+      Math.abs(lng - lastGeocoded.current.lng) < 0.005
+    ) return;
+    lastGeocoded.current = { lat, lng };
+    fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=vi`,
+      { headers: { 'User-Agent': 'Delilog/1.0' } },
+    )
+      .then(r => r.json())
+      .then(data => {
+        const a = data?.address ?? {};
+        const parts = [
+          a.village || a.suburb || a.quarter,
+          a.district || a.city_district || a.county,
+          a.city || a.town || a.state,
+        ].filter(Boolean);
+        setGeoAddress(parts.length ? parts.join(', ') : (data.display_name ?? ''));
+      })
+      .catch(() => {});
+  }, [driverLocation]);
+
+  useEffect(() => {
+    if (!tripId || !isInTransit) return;
+
+    const socket = getTrackingSocket();
+    socket.emit('customer:watch_trip', { tripId });
+
+    const handleLocation = (loc: typeof driverLocation) => {
+      setDriverLocation(loc);
+    };
+
+    socket.on('driver:location', handleLocation);
+    return () => { socket.off('driver:location', handleLocation); };
+  }, [tripId, isInTransit]);
 
   if (isLoading) {
     return (
@@ -197,6 +413,50 @@ export default function OrderDetailScreen() {
       </LinearGradient>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+
+        {/* Bản đồ GPS — chỉ hiện khi đang vận chuyển */}
+        {isInTransit && (
+          <View style={styles.card}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 }}>
+              <Ionicons name="locate" size={18} color={Colors.primary} />
+              <Text style={styles.cardTitle}>Vị trí xe theo thời gian thực</Text>
+              {driverLocation && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' }} />
+                  <Text style={{ fontSize: 11, color: '#22c55e', fontWeight: '600' }}>Live</Text>
+                </View>
+              )}
+            </View>
+
+            {driverLocation ? (
+              <>
+                <OsmMap latitude={driverLocation.latitude} longitude={driverLocation.longitude} />
+                {/* Info bar bên dưới map */}
+                <View style={mapStyles.infoBar}>
+                  <View style={mapStyles.infoItem}>
+                    <Ionicons name="location" size={14} color={Colors.primary} />
+                    <Text style={mapStyles.infoText} numberOfLines={1}>{geoAddress}</Text>
+                  </View>
+                  {driverLocation.speed !== undefined && driverLocation.speed > 0 && (
+                    <View style={mapStyles.infoItem}>
+                      <Ionicons name="speedometer-outline" size={14} color={Colors.primary} />
+                      <Text style={mapStyles.infoText}>{Math.round(driverLocation.speed)} km/h</Text>
+                    </View>
+                  )}
+                  <Text style={mapStyles.infoTime}>
+                    {new Date(driverLocation.timestamp ?? Date.now()).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <View style={{ paddingVertical: 32, alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator color={Colors.primary} />
+                <Text style={{ fontSize: 13, color: Colors.textSecondary }}>Đang chờ tín hiệu GPS từ tài xế...</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Timeline */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Hành trình đơn hàng</Text>
@@ -305,6 +565,16 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
+        {/* Nút xem QR — hiện khi đơn đang xử lý hoặc đang giao */}
+        {!['CANCELLED', 'DELIVERED'].includes(order.status) && (
+          <View style={styles.actionsWrap}>
+            <TouchableOpacity style={qrStyles.qrBtn} onPress={() => setShowQrModal(true)} activeOpacity={0.85}>
+              <Ionicons name="qr-code-outline" size={20} color={Colors.primary} />
+              <Text style={qrStyles.qrBtnText}>Xem mã QR đơn hàng</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {order.status === 'PENDING' && (
           <View style={styles.actionsWrap}>
             <Button label="Hủy đơn hàng" onPress={() => { setSelectedReason(''); setShowCancelModal(true); }} variant="danger" />
@@ -330,6 +600,45 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* QR Modal */}
+      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowQrModal(false)} />
+        <View style={qrStyles.qrSheet}>
+          <View style={styles.modalHandle} />
+          <Text style={qrStyles.qrTitle}>Mã QR đơn hàng</Text>
+          <Text style={qrStyles.qrSub}>Cho tài xế quét mã này để xác nhận giao hàng</Text>
+          <View style={qrStyles.qrBox}>
+            <QRCode
+              value={`delilog://orders/${order.id}`}
+              size={200}
+              color="#1A3566"
+              backgroundColor="#fff"
+              getRef={(ref) => { qrRef.current = ref; }}
+            />
+          </View>
+          <Text style={qrStyles.trackText}>#{order.trackingCode}</Text>
+          <Text style={qrStyles.recipientText}>{order.receiverName} · {order.receiverAddress ?? ''}</Text>
+
+          {/* Nút tải về + Đóng */}
+          <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+            <TouchableOpacity
+              style={qrStyles.downloadBtn}
+              onPress={downloadQr}
+              activeOpacity={0.85}
+              disabled={savingQr}
+            >
+              {savingQr
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <><Ionicons name="share-outline" size={18} color={Colors.primary} /><Text style={qrStyles.downloadBtnText}>Lưu / Chia sẻ</Text></>
+              }
+            </TouchableOpacity>
+            <TouchableOpacity style={qrStyles.closeBtn} onPress={() => setShowQrModal(false)} activeOpacity={0.8}>
+              <Text style={qrStyles.closeBtnText}>Đóng</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Cancel modal */}
       <Modal visible={showCancelModal} transparent animationType="slide" onRequestClose={() => setShowCancelModal(false)}>
@@ -372,6 +681,136 @@ export default function OrderDetailScreen() {
     </View>
   );
 }
+
+const qrStyles = StyleSheet.create({
+  qrBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1.5, borderColor: Colors.primary, borderRadius: 12,
+    paddingVertical: 12, backgroundColor: '#EEF2FF',
+  },
+  qrBtnText: { color: Colors.primary, fontWeight: '700', fontSize: 15 },
+  qrSheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    alignItems: 'center', paddingHorizontal: 24, paddingBottom: 36, paddingTop: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12, shadowRadius: 12, elevation: 20,
+  },
+  qrTitle: { fontSize: 18, fontWeight: '700', color: '#111', marginTop: 8 },
+  qrSub: { fontSize: 13, color: '#6b7280', marginTop: 4, marginBottom: 20, textAlign: 'center' },
+  qrBox: {
+    padding: 20, backgroundColor: '#fff',
+    borderRadius: 16, borderWidth: 1, borderColor: '#e5e7eb',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 4,
+  },
+  trackText: { marginTop: 16, fontSize: 15, fontWeight: '700', color: '#1A3566', letterSpacing: 1 },
+  recipientText: { marginTop: 4, fontSize: 12, color: '#6b7280', textAlign: 'center', marginBottom: 20 },
+  downloadBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 14, borderRadius: 12,
+    borderWidth: 1.5, borderColor: Colors.primary, backgroundColor: '#EEF2FF',
+  },
+  downloadBtnText: { color: Colors.primary, fontWeight: '700', fontSize: 15 },
+  closeBtn: {
+    flex: 1, paddingVertical: 14, backgroundColor: Colors.primary,
+    borderRadius: 12, alignItems: 'center',
+  },
+  closeBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+});
+
+const mapStyles = StyleSheet.create({
+  markerBubble: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35, shadowRadius: 3, elevation: 6,
+  },
+  markerTail: {
+    width: 0, height: 0,
+    borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 7,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent',
+    borderTopColor: Colors.primary,
+    marginTop: -1,
+  },
+  centerBtn: {
+    position: 'absolute',
+    right: 54,
+    bottom: 10,
+    width: 36, height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
+  },
+  zoomControls: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  zoomBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomBtnText: {
+    fontSize: 20,
+    fontWeight: '400',
+    color: '#374151',
+    lineHeight: 24,
+  },
+  zoomDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginHorizontal: 6,
+  },
+  zoomBadge: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  zoomBadgeText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  infoBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 12,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  infoText: {
+    fontSize: 12,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  infoTime: {
+    marginLeft: 'auto',
+    fontSize: 11,
+    color: Colors.textSecondary,
+  },
+});
 
 const styles = StyleSheet.create({
   hero: { paddingHorizontal: Layout.padding, paddingBottom: 24, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
